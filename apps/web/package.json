@@ -10,8 +10,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@pixel-flow/types": "*",
-    "@pixel-flow/ui": "*",
+    "@pixel-flow/types": "file:../../packages/types",
+    "@pixel-flow/ui": "file:../../packages/ui",
     "@auth/core": "^0.37.2",
     "@hookform/resolvers": "^3.3.4",
     "@radix-ui/react-avatar": "^1.0.4",
