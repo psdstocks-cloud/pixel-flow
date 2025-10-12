@@ -1,0 +1,73 @@
+# Pixel Flow Development Rules
+
+## Code Style
+- Use TypeScript strict mode
+- Prefer functional components with hooks
+- Use async/await over promises
+- Use descriptive variable names (no single letters except in loops)
+- Add JSDoc comments for complex functions
+
+## File Organization
+- Group related functionality in modules
+- Keep components under 300 lines
+- Extract reusable logic into hooks
+- Use barrel exports (index.ts) for cleaner imports
+
+## Backend Patterns
+- Always validate inputs with Zod schemas
+- Use transactions for multi-step database operations
+- Implement proper error handling with AppError class
+- Add rate limiting to all public endpoints
+- Log all errors with context
+
+## Frontend Patterns
+- Use React Query for server state
+- Use Zustand for client state
+- Implement optimistic updates where appropriate
+- Show loading and error states
+- Use shadcn/ui components
+
+## Database
+- Always use Prisma transactions for related operations
+- Add indexes for frequently queried fields
+- Use soft deletes for user data
+- Include createdAt/updatedAt timestamps
+
+## API Design
+- RESTful endpoints
+- Consistent response format: { success, data, message }
+- Use proper HTTP status codes
+- Include pagination for list endpoints
+- Version API endpoints (/api/v1/...)
+
+## Security
+- Never log sensitive data (passwords, tokens)
+- Sanitize all user inputs
+- Use parameterized queries (Prisma handles this)
+- Implement CSRF protection
+- Rate limit authentication endpoints
+
+## Testing
+- Write tests for critical business logic
+- Mock external API calls (nehtw)
+- Test error cases, not just happy paths
+- Use factories for test data
+
+## Deployment
+- Keep environment variables documented
+- Use Railway for backend (with Dockerfile)
+- Use Vercel for frontend
+- Set up proper monitoring (Sentry)
+
+## nehtw API Integration
+- Always handle polling with timeout
+- Respect 2-second minimum between status checks
+- Store task_id for all orders
+- Handle all error states from nehtw
+- Implement retry logic with exponential backoff
+
+## Credit System
+- Always check credits before operations
+- Use database transactions for credit operations
+- Record all credit changes in transactions table
+- Calculate balanceBefore and balanceAfter correctly

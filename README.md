@@ -1,135 +1,263 @@
-# Turborepo starter
+# Pixel Flow
 
-This Turborepo starter is maintained by the Turborepo core team.
+A modern SaaS platform for stock images, AI generation, and design tools.
 
-## Using this example
+## 🚀 Features
 
-Run the following command:
+- **Stock Images**: Download from multiple sources (Shutterstock, Adobe Stock, Freepik, etc.)
+- **AI Generation**: Create unique artwork with AI-powered image generation
+- **Background Removal**: Remove backgrounds from images with AI precision
+- **File Management**: Organize and manage your visual content
+- **Credit System**: Pay-as-you-go with credit packages
 
-```sh
-npx create-turbo@latest
-```
+## 🛠 Tech Stack
 
-## What's inside?
+- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: Express.js, Node.js, TypeScript
+- **Database**: PostgreSQL with Prisma ORM
+- **Cache**: Redis
+- **Storage**: Cloudflare R2 (S3-compatible)
+- **Queue**: BullMQ with Redis
+- **Payments**: Stripe
+- **Email**: SendGrid
+- **Deployment**: Vercel (Frontend) + Railway (Backend)
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
+## 📁 Project Structure
 
 ```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+pixel-flow/
+├── apps/
+│   ├── web/                 # Next.js frontend application
+│   └── api/                 # Express.js backend API
+├── packages/
+│   ├── database/            # Prisma schema and database utilities
+│   ├── types/              # Shared TypeScript types
+│   ├── ui/                 # Shared UI components
+│   ├── eslint-config/      # ESLint configuration
+│   └── typescript-config/  # TypeScript configuration
+├── docs/                   # Documentation
+└── .cursorrules           # Cursor AI development guidelines
 ```
 
-You can build a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+## 🚀 Getting Started
 
+### Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- PostgreSQL database
+- Redis instance
+- Cloudflare R2 account
+- Stripe account
+- SendGrid account
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd pixel-flow
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. **Set up the database**
+   ```bash
+   cd packages/database
+   npx prisma migrate dev
+   npx prisma db seed
+   ```
+
+5. **Start development servers**
+   ```bash
+   npm run dev
+   ```
+
+### Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```env
+# Database
+DATABASE_URL="postgresql://user:password@host:5432/pixelflow"
+
+# Redis
+REDIS_HOST="localhost"
+REDIS_PORT="6379"
+REDIS_PASSWORD=""
+
+# JWT
+JWT_SECRET="your_jwt_secret_min_32_chars"
+JWT_EXPIRES_IN="7d"
+
+# nehtw API
+NEHTW_API_KEY="your_nehtw_api_key"
+
+# Stripe
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+STRIPE_PRICE_ID_50="price_..."
+STRIPE_PRICE_ID_200="price_..."
+STRIPE_PRICE_ID_500="price_..."
+
+# Cloudflare R2
+R2_ACCOUNT_ID="your_account_id"
+R2_ACCESS_KEY_ID="your_access_key"
+R2_SECRET_ACCESS_KEY="your_secret_key"
+R2_BUCKET_NAME="pixelflow-files"
+R2_PUBLIC_URL="https://files.pixelflow.com"
+
+# SendGrid
+SENDGRID_API_KEY="SG...."
+SENDGRID_FROM_EMAIL="noreply@pixelflow.com"
+
+# Frontend
+FRONTEND_URL="http://localhost:3000"
+
+# App
+NODE_ENV="development"
+PORT="3001"
 ```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+## 📚 Development
+
+### Available Scripts
+
+- `npm run dev` - Start all development servers
+- `npm run build` - Build all applications
+- `npm run lint` - Lint all packages
+- `npm run test` - Run tests
+- `npm run db:generate` - Generate Prisma client
+- `npm run db:migrate` - Run database migrations
+- `npm run db:seed` - Seed database with initial data
+
+### Database Management
+
+```bash
+# Generate Prisma client
+cd packages/database
+npx prisma generate
+
+# Run migrations
+npx prisma migrate dev
+
+# Seed database
+npx prisma db seed
+
+# Open Prisma Studio
+npx prisma studio
 ```
 
-### Develop
+## 🏗 Architecture
 
-To develop all apps and packages, run the following command:
+### Frontend (Next.js)
+- **App Router**: Modern Next.js routing with server components
+- **Authentication**: NextAuth.js v5 with Google OAuth and email/password
+- **State Management**: Zustand for client state, React Query for server state
+- **UI Components**: shadcn/ui with Tailwind CSS
+- **Type Safety**: Full TypeScript coverage
 
-```
-cd my-turborepo
+### Backend (Express.js)
+- **API Routes**: RESTful endpoints with proper HTTP status codes
+- **Authentication**: JWT-based auth with middleware
+- **Database**: Prisma ORM with PostgreSQL
+- **Caching**: Redis for performance optimization
+- **Queue System**: BullMQ for background job processing
+- **File Storage**: Cloudflare R2 for cost-effective storage
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
+### Database Schema
+- **Users**: Authentication, credits, storage limits
+- **Orders**: Stock downloads, AI generation, background removal
+- **Files**: File metadata, storage keys, organization
+- **Transactions**: Credit purchases, spending, refunds
+- **Audit Logs**: Security and compliance tracking
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
+## 🔧 API Endpoints
 
-You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+### Authentication
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `POST /api/auth/forgot-password` - Password reset request
+- `POST /api/auth/reset-password` - Password reset
+- `GET /api/auth/me` - Get current user
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
+### Stock Images
+- `GET /api/stock/sites` - Get available stock sites
+- `GET /api/stock/info` - Get stock image info
+- `POST /api/stock/order` - Order stock download
+- `GET /api/stock/status/:taskId` - Check order status
+- `GET /api/stock/download/:taskId` - Get download link
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+### AI Generation
+- `POST /api/ai/generate` - Create AI generation
+- `GET /api/ai/result/:jobId` - Get generation result
+- `POST /api/ai/action` - Perform AI action (vary/upscale)
 
-### Remote Caching
+### Files
+- `GET /api/files` - List user files
+- `POST /api/files/upload` - Upload file
+- `DELETE /api/files/:id` - Delete file
+- `GET /api/files/:id/download` - Download file
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+## 🚀 Deployment
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+### Frontend (Vercel)
+1. Connect your GitHub repository to Vercel
+2. Set environment variables in Vercel dashboard
+3. Deploy automatically on push to main branch
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+### Backend (Railway)
+1. Connect your GitHub repository to Railway
+2. Set environment variables in Railway dashboard
+3. Deploy automatically on push to main branch
 
-```
-cd my-turborepo
+### Database
+- Use Railway PostgreSQL for development
+- Use Railway PostgreSQL for production
+- Set up database backups
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
+## 📊 Monitoring
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
+- **Error Tracking**: Sentry for error monitoring
+- **Analytics**: Vercel Analytics for performance
+- **Logging**: Winston for structured logging
+- **Uptime**: BetterUptime for uptime monitoring
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+## 🤝 Contributing
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
+## 📄 License
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Useful Links
+## 🆘 Support
 
-Learn more about the power of Turborepo:
+For support, email support@pixelflow.com or join our Discord community.
 
-- [Tasks](https://turborepo.com/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.com/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.com/docs/reference/configuration)
-- [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
+## 🗺 Roadmap
+
+- [ ] Batch background removal
+- [ ] Advanced file filters and search
+- [ ] Prompt library expansion
+- [ ] Usage analytics dashboard
+- [ ] Team workspaces
+- [ ] Mobile app (PWA)
+- [ ] API access for developers
+
+---
+
+Built with ❤️ by the Pixel Flow team

@@ -1,0 +1,19 @@
+{
+  "name": "@pixel-flow/types",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "devDependencies": {
+    "@pixel-flow/eslint-config": "file:../eslint-config",
+    "@pixel-flow/typescript-config": "file:../typescript-config",
+    "@types/node": "^20.10.5",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}

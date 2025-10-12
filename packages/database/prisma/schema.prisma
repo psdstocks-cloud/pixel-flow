@@ -1,0 +1,481 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  FREE
+  PREMIUM
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  POLLING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum FileType {
+  STOCK_DOWNLOAD
+  AI_GENERATION
+  BACKGROUND_REMOVED
+  UPLOADED
+}
+
+enum TransactionType {
+  PURCHASE
+  SPEND
+  REFUND
+  ADMIN_ADJUSTMENT
+  REFERRAL_BONUS
+  WELCOME_BONUS
+  PROMO_BONUS
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TWO_FACTOR
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  REGISTER
+  EMAIL_VERIFIED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_REQUESTED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  CREDIT_PURCHASE
+  CREDIT_SPEND
+  CREDIT_REFUND
+  CREDIT_ADMIN_ADJUSTMENT
+  ORDER_CREATED
+  ORDER_COMPLETED
+  ORDER_FAILED
+  ORDER_CANCELLED
+  FILE_UPLOADED
+  FILE_DOWNLOADED
+  FILE_DELETED
+  FILE_SHARED
+  USER_BANNED
+  USER_UNBANNED
+  BALANCE_ADJUSTED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailVerified     DateTime?
+  name              String?
+  password          String?   // bcrypt hashed, nullable for OAuth users
+  role              UserRole  @default(FREE)
+
+  // Credits & Storage
+  credits           Decimal   @default(0) @db.Decimal(10, 2)
+  storageUsedBytes  BigInt    @default(0)
+  storageLimit      BigInt    @default(1073741824) // 1GB = 1,073,741,824 bytes
+
+  // OAuth Integration
+  googleId          String?   @unique
+  image             String?   // Profile image URL from OAuth
+
+  // Security
+  emailNotifications Boolean  @default(true)
+  twoFactorEnabled   Boolean  @default(false)
+  twoFactorSecret    String?  // TOTP secret
+
+  // Account Status
+  isActive          Boolean   @default(true)
+  isBanned          Boolean   @default(false)
+  banReason         String?   @db.Text
+  bannedAt          DateTime?
+  bannedBy          String?   // Admin user ID
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+
+  // Relations
+  orders            Order[]
+  files             File[]
+  transactions      Transaction[]
+  auditLogs         AuditLog[]
+  savedPrompts      SavedPrompt[]
+  favorites         Favorite[]
+  folders           Folder[]
+  sessions          Session[]
+  verificationTokens VerificationToken[]
+  passwordResets    PasswordReset[]
+
+  @@index([email])
+  @@index([role])
+  @@index([googleId])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token        String   @unique
+  ipAddress    String?
+  userAgent    String?  @db.Text
+
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String   @unique
+  type      TokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String   @unique
+  ipAddress String?
+
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_resets")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Order Details
+  status          OrderStatus @default(PENDING)
+  type            FileType
+  creditsCost     Decimal     @db.Decimal(10, 2)
+
+  // Stock Download Specific
+  stockSite       String?     // shutterstock, adobestock, freepik, etc.
+  stockId         String?
+  stockUrl        String?     @db.Text
+  stockTitle      String?     @db.Text
+  stockAuthor     String?
+
+  // AI Generation Specific
+  prompt          String?     @db.Text
+  aiJobId         String?     @unique
+  aiParentJobId   String?     // For variations/upscales
+  aiAction        String?     // imagine, vary, upscale
+  aiVaryType      String?     // subtle, strong
+  aiIndex         Int?        // 0-3 for image selection
+
+  // Background Removal Specific
+  originalFileId  String?
+  originalFile    File?       @relation("OriginalFile", fields: [originalFileId], references: [id], onDelete: SetNull)
+
+  // Processing Details
+  nehtwTaskId     String?     @unique
+  errorMessage    String?     @db.Text
+  retryCount      Int         @default(0)
+  maxRetries      Int         @default(3)
+
+  // Metadata
+  metadata        Json?       // Store additional data as needed
+
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  startedAt       DateTime?   // When processing started
+  completedAt     DateTime?   // When order completed
+
+  // Relations
+  files           File[]      @relation("OrderFiles")
+  transactions    Transaction[]
+
+  @@index([userId, status])
+  @@index([nehtwTaskId])
+  @@index([aiJobId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@map("orders")
+}
+
+model File {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orderId         String?
+  order           Order?    @relation("OrderFiles", fields: [orderId], references: [id], onDelete: SetNull)
+
+  // File Details
+  type            FileType
+  filename        String
+  originalName    String?
+  mimeType        String
+  sizeBytes       BigInt
+
+  // Storage
+  storageKey      String    @unique  // R2 object key: "stock/user123/1234567890_image.jpg"
+  thumbnailKey    String?             // R2 thumbnail key: "thumbnails/user123/1234567890_thumb.jpg"
+  storageProvider String    @default("r2") // r2, s3, local (for future flexibility)
+
+  // Image Metadata
+  width           Int?
+  height          Int?
+  format          String?   // jpg, png, webp, etc.
+  colorSpace      String?   // rgb, cmyk, grayscale
+  hasAlpha        Boolean   @default(false)
+
+  // Organization
+  folderId        String?
+  folder          Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags            String[]  @default([])
+
+  // Access Control
+  isPublic        Boolean   @default(false)
+  publicUrl       String?   @unique
+  shareToken      String?   @unique
+
+  // Usage Statistics
+  downloadCount   Int       @default(0)
+  lastDownloadAt  DateTime?
+  viewCount       Int       @default(0)
+  lastViewedAt    DateTime?
+
+  // Soft Delete
+  isDeleted       Boolean   @default(false)
+  deletedAt       DateTime?
+
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  favorites       Favorite[]
+  originalForOrders Order[] @relation("OriginalFile")
+
+  @@index([userId, type])
+  @@index([storageKey])
+  @@index([createdAt])
+  @@index([folderId])
+  @@index([isDeleted, userId])
+  @@map("files")
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?  @db.Text
+  color       String?  // Hex color for visual organization
+  icon        String?  // Icon name from icon library
+
+  // Hierarchy
+  parentId    String?
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[] @relation("FolderHierarchy")
+
+  // Organization
+  sortOrder   Int      @default(0)
+  isDefault   Boolean  @default(false) // System-generated folders
+
+  // Relations
+  files       File[]
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, name, parentId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("folders")
+}
+
+model Transaction {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Transaction Details
+  type            TransactionType
+  amount          Decimal         @db.Decimal(10, 2)
+  balanceBefore   Decimal         @db.Decimal(10, 2)
+  balanceAfter    Decimal         @db.Decimal(10, 2)
+  description     String
+
+  // Payment Details (for purchases)
+  stripePaymentId String?         @unique
+  stripePriceId   String?
+  stripeCustomerId String?
+  paymentMethod   String?         // card, google_pay, apple_pay
+
+  // Reference
+  orderId         String?
+  order           Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // Metadata
+  metadata        Json?
+
+  // Timestamps
+  createdAt       DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([stripePaymentId])
+  @@index([type, createdAt])
+  @@map("transactions")
+}
+
+model SavedPrompt {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  prompt      String   @db.Text
+  category    String?  // "product", "landscape", "portrait", etc.
+
+  // Usage Statistics
+  useCount    Int      @default(0)
+  lastUsedAt  DateTime?
+
+  // Organization
+  isFavorite  Boolean  @default(false)
+  tags        String[] @default([])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, category])
+  @@map("saved_prompts")
+}
+
+model Favorite {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fileId      String
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  note        String?  @db.Text
+  tags        String[] @default([])
+
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, fileId])
+  @@index([userId])
+  @@index([fileId])
+  @@map("favorites")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Action Details
+  action      AuditAction
+  resource    String?  // Resource type: "user", "file", "order"
+  resourceId  String?  // ID of the resource
+
+  // Request Details
+  details     Json
+  ipAddress   String?
+  userAgent   String?  @db.Text
+
+  // Result
+  success     Boolean  @default(true)
+  errorMessage String? @db.Text
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([resourceId])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  key         String   @id
+  value       Json
+  description String?  @db.Text
+  category    String?  // "pricing", "features", "limits", etc.
+
+  isPublic    Boolean  @default(false) // Can be exposed to frontend
+
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?  // Admin user ID
+
+  @@index([category])
+  @@map("system_config")
+}
+
+model CreditPricing {
+  id              String   @id @default(cuid())
+
+  // Package Details
+  credits         Int      @unique
+  priceUSD        Decimal  @db.Decimal(10, 2)
+  stripePriceId   String   @unique
+
+  // Marketing
+  displayName     String   // "Starter Pack", "Popular Pack", etc.
+  description     String?
+  isPopular       Boolean  @default(false)
+  discountPercent Int      @default(0)
+
+  // Status
+  isActive        Boolean  @default(true)
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("credit_pricing")
+}
