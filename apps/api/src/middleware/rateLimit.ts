@@ -9,10 +9,16 @@ const redis = new Redis({
   password: config.redis.password,
 })
 
+// Create a sendCommand function that matches the expected type
+const sendCommand = async (command: string, ...args: string[]) => {
+  const result = await redis.call(command, ...args)
+  return result as any
+}
+
 // General rate limiting
 export const rateLimitMiddleware = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand,
     prefix: 'rl:general:',
   }),
   windowMs: config.rateLimit.windowMs,
@@ -25,7 +31,7 @@ export const rateLimitMiddleware = rateLimit({
 // Authentication rate limiting
 export const authRateLimit = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand,
     prefix: 'rl:auth:',
   }),
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -36,7 +42,7 @@ export const authRateLimit = rateLimit({
 // Stock download rate limiting
 export const stockDownloadRateLimit = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand,
     prefix: 'rl:stock:',
   }),
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -47,7 +53,7 @@ export const stockDownloadRateLimit = rateLimit({
 // AI generation rate limiting
 export const aiGenerationRateLimit = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand,
     prefix: 'rl:ai:',
   }),
   windowMs: 60 * 60 * 1000, // 1 hour

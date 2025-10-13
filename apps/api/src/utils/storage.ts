@@ -65,6 +65,11 @@ export class StorageService {
   generateThumbnailKey(storageKey: string): string {
     const parts = storageKey.split('/')
     const filename = parts[parts.length - 1]
+    
+    if (!filename) {
+      throw new Error('Invalid storage key: no filename found')
+    }
+    
     const nameWithoutExt = filename.split('.')[0]
     const extension = filename.split('.').pop()
     
