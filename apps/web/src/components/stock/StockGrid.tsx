@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Download, Heart, Eye, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
+// import { Download, Heart, Eye, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -113,14 +113,12 @@ export function StockGrid({
               variant="secondary"
               onClick={() => onStockSelect(stock)}
             >
-              <Eye className="h-4 w-4 mr-1" />
               Preview
             </Button>
             <Button
               size="sm"
               onClick={() => handleAddToCart(stock)}
             >
-              <Download className="h-4 w-4 mr-1" />
               Add to Cart
             </Button>
           </div>
@@ -134,7 +132,7 @@ export function StockGrid({
           className="absolute top-2 left-2 h-8 w-8 p-0 bg-black bg-opacity-50 hover:bg-opacity-75"
           onClick={() => toggleFavorite(stock.id)}
         >
-          <Heart className={`h-4 w-4 ${favorites.has(stock.id) ? 'fill-red-500 text-red-500' : 'text-white'}`} />
+          ♥
         </Button>
       </div>
       <CardContent className="p-4">
@@ -195,21 +193,19 @@ export function StockGrid({
                 className="h-8 w-8 p-0"
                 onClick={() => toggleFavorite(stock.id)}
               >
-                <Heart className={`h-4 w-4 ${favorites.has(stock.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                ♥
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onStockSelect(stock)}
               >
-                <Eye className="h-4 w-4 mr-1" />
                 Preview
               </Button>
               <Button
                 size="sm"
                 onClick={() => handleAddToCart(stock)}
               >
-                <Download className="h-4 w-4 mr-1" />
                 Add to Cart
               </Button>
             </div>
@@ -222,74 +218,24 @@ export function StockGrid({
   const renderPagination = () => {
     if (!pagination || pagination.totalPages <= 1) return null
 
-    const { currentPage, totalPages, onPageChange } = pagination
-    const pages = []
-    
-    // Calculate page range
-    const startPage = Math.max(1, currentPage - 2)
-    const endPage = Math.min(totalPages, currentPage + 2)
-
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(i)
-    }
-
     return (
       <div className="flex items-center justify-center gap-2 mt-8">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
+          onClick={() => pagination.onPageChange(pagination.currentPage - 1)}
+          disabled={pagination.currentPage === 1}
         >
-          <ChevronLeft className="h-4 w-4" />
           Previous
         </Button>
         
-        {startPage > 1 && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(1)}
-            >
-              1
-            </Button>
-            {startPage > 2 && <span className="px-2">...</span>}
-          </>
-        )}
-
-        {pages.map(page => (
-          <Button
-            key={page}
-            variant={page === currentPage ? "default" : "outline"}
-            size="sm"
-            onClick={() => onPageChange(page)}
-          >
-            {page}
-          </Button>
-        ))}
-
-        {endPage < totalPages && (
-          <>
-            {endPage < totalPages - 1 && <span className="px-2">...</span>}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(totalPages)}
-            >
-              {totalPages}
-            </Button>
-          </>
-        )}
-
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
+          onClick={() => pagination.onPageChange(pagination.currentPage + 1)}
+          disabled={pagination.currentPage === pagination.totalPages}
         >
           Next
-          <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     )
@@ -301,9 +247,13 @@ export function StockGrid({
         ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
         : "space-y-4"
       }>
-        {stocks.map((stock, index) => 
-          viewMode === 'grid' ? renderStockCard(stock, index) : renderListView(stock, index)
-        )}
+        {stocks.map((stock, index) => {
+          if (viewMode === 'grid') {
+            return renderStockCard(stock, index)
+          } else {
+            return renderListView(stock, index)
+          }
+        })}
       </div>
 {renderPagination()}
     </>
