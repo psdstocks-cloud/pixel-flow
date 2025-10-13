@@ -9,9 +9,9 @@ import {
   Clock,
   Star
 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@pixel-flow/ui/card'
-import { Button } from '@pixel-flow/ui/button'
-import { Badge } from '@pixel-flow/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 export default function DashboardPage() {
   return (

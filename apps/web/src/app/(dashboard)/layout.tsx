@@ -14,8 +14,8 @@ import {
   Menu,
   X
 } from 'lucide-react'
-import { Button } from '@pixel-flow/ui/button'
-import { Badge } from '@pixel-flow/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Cart } from '@/components/stock/Cart'
 import { cn } from '@/lib/utils'
 

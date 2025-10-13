@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { ShoppingCart, X, Download, Trash2 } from 'lucide-react'
-import { Button } from '@pixel-flow/ui/button'
-import { Badge } from '@pixel-flow/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@pixel-flow/ui/card'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@pixel-flow/ui/sheet'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { useCartStore } from '@/stores/cartStore'
-import { Separator } from '@pixel-flow/ui/separator'
+import { Separator } from '@/components/ui/separator'
 
 export function Cart() {
   const { items, removeItem, clearCart, getTotalCost, getItemCount } = useCartStore()

@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { X, Download, Heart, Share2, ExternalLink } from 'lucide-react'
-import { Button } from '@pixel-flow/ui/button'
-import { Badge } from '@pixel-flow/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@pixel-flow/ui/dialog'
-import { Separator } from '@pixel-flow/ui/separator'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Separator } from '@/components/ui/separator'
 
 interface StockPreviewProps {
   stock: any

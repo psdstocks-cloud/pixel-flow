@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { Search, Filter, X } from 'lucide-react'
-import { Button } from '@pixel-flow/ui/button'
-import { Input } from '@pixel-flow/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@pixel-flow/ui/select'
-import { Card, CardContent } from '@pixel-flow/ui/card'
-import { Badge } from '@pixel-flow/ui/badge'
-import { Separator } from '@pixel-flow/ui/separator'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 
 interface StockSearchProps {
   searchParams: {

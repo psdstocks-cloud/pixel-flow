@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { Download, Heart, Eye, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
-import { Button } from '@pixel-flow/ui/button'
-import { Card, CardContent } from '@pixel-flow/ui/card'
-import { Badge } from '@pixel-flow/ui/badge'
-import { Skeleton } from '@pixel-flow/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCartStore } from '@/stores/cartStore'
 
 interface StockGridProps {
@@ -29,7 +29,7 @@ export function StockGrid({
   viewMode = 'grid',
   pagination 
 }: StockGridProps) {
-  const { addToCart } = useCartStore()
+  const { addItem } = useCartStore()
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
 
   const toggleFavorite = (stockId: string) => {
@@ -45,14 +45,16 @@ export function StockGrid({
   }
 
   const handleAddToCart = (stock: any) => {
-    addToCart({
+    addItem({
       id: stock.id,
+      stockId: stock.id,
       title: stock.title,
       image: stock.image,
       cost: stock.cost,
       author: stock.author,
       sizeInBytes: stock.sizeInBytes,
       site: stock.site,
+      ext: stock.ext || 'jpg',
     })
   }
 

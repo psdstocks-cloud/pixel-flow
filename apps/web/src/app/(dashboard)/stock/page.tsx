@@ -79,7 +79,7 @@ export default function StockPage() {
         {searchState.query && (
           <div className="flex items-center gap-2 mb-4">
             <Badge variant="secondary" className="text-sm">
-              {stocks?.total || 0} results for "{searchState.query}"
+              {stocks?.pagination?.total || 0} results for "{searchState.query}"
             </Badge>
             <Badge variant="outline" className="text-sm">
               {searchState.site}
@@ -102,7 +102,7 @@ export default function StockPage() {
         viewMode={viewMode}
         pagination={{
           currentPage: searchState.page,
-          totalPages: Math.ceil((stocks?.total || 0) / 20),
+          totalPages: Math.ceil((stocks?.pagination?.total || 0) / 20),
           onPageChange: handlePageChange,
         }}
       />

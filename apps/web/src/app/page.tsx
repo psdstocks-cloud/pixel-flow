@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import { Button } from '@pixel-flow/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@pixel-flow/ui/card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function HomePage() {
   return (
