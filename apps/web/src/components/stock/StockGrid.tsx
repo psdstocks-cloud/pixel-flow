@@ -305,7 +305,7 @@ export function StockGrid({
           viewMode === 'grid' ? renderStockCard(stock, index) : renderListView(stock, index)
         )}
       </div>
-      {renderPagination()}
+{renderPagination()}
     </>
   )
 }

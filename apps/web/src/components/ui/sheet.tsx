@@ -5,7 +5,12 @@ import { cn } from "@/lib/utils"
 
 // Simple sheet components without Radix UI to avoid TypeScript conflicts
 const Sheet = ({ children, ...props }: any) => <div {...props}>{children}</div>
-const SheetTrigger = ({ children, ...props }: any) => <button {...props}>{children}</button>
+const SheetTrigger = ({ children, asChild, ...props }: any) => {
+  if (asChild) {
+    return <>{children}</>
+  }
+  return <button {...props}>{children}</button>
+}
 const SheetClose = ({ children, ...props }: any) => <button {...props}>{children}</button>
 const SheetPortal = ({ children }: any) => <>{children}</>
 
