@@ -68,6 +68,10 @@ export class StorageService {
     const nameWithoutExt = filename.split('.')[0]
     const extension = filename.split('.').pop()
     
+    if (!extension) {
+      throw new Error('Invalid filename: no extension found')
+    }
+    
     parts[parts.length - 1] = `${nameWithoutExt}_thumb.${extension}`
     return parts.join('/')
   }
