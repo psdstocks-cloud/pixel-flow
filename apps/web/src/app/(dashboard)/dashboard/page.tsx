@@ -1,14 +1,14 @@
 import Link from 'next/link'
-import { 
-  Search, 
-  Sparkles, 
-  Scissors, 
-  Folder, 
-  Download,
-  TrendingUp,
-  Clock,
-  Star
-} from 'lucide-react'
+// import { 
+//   Search, 
+//   Sparkles, 
+//   Scissors, 
+//   Folder, 
+//   Download,
+//   TrendingUp,
+//   Clock,
+//   Star
+// } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +29,7 @@ export default function DashboardPage() {
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-blue-100 rounded-lg">
-                <Download className="h-6 w-6 text-blue-600" />
+                📥
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Downloads</p>
@@ -43,7 +43,7 @@ export default function DashboardPage() {
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
-                <Star className="h-6 w-6 text-green-600" />
+                ⭐
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Credits</p>
@@ -57,7 +57,7 @@ export default function DashboardPage() {
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-purple-100 rounded-lg">
-                <Folder className="h-6 w-6 text-purple-600" />
+                📁
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Files</p>
@@ -71,7 +71,7 @@ export default function DashboardPage() {
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-orange-100 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-orange-600" />
+                📈
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">This Month</p>
@@ -87,7 +87,7 @@ export default function DashboardPage() {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Search className="h-5 w-5 mr-2 text-blue-600" />
+              🔍
               Stock Images
             </CardTitle>
             <CardDescription>
@@ -104,7 +104,7 @@ export default function DashboardPage() {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Sparkles className="h-5 w-5 mr-2 text-purple-600" />
+              ✨
               AI Generation
             </CardTitle>
             <CardDescription>
@@ -121,7 +121,7 @@ export default function DashboardPage() {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Scissors className="h-5 w-5 mr-2 text-green-600" />
+              ✂️
               Background Removal
             </CardTitle>
             <CardDescription>
@@ -174,7 +174,7 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="flex items-start">
                 <div className="p-2 bg-blue-100 rounded-lg mr-3">
-                  <Clock className="h-4 w-4 text-blue-600" />
+                  🕐
                 </div>
                 <div>
                   <p className="font-medium text-sm">Batch Downloads</p>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-start">
                 <div className="p-2 bg-green-100 rounded-lg mr-3">
-                  <Star className="h-4 w-4 text-green-600" />
+                  ⭐
                 </div>
                 <div>
                   <p className="font-medium text-sm">Save Credits</p>
@@ -192,7 +192,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-start">
                 <div className="p-2 bg-purple-100 rounded-lg mr-3">
-                  <Folder className="h-4 w-4 text-purple-600" />
+                  📁
                 </div>
                 <div>
                   <p className="font-medium text-sm">Organize Files</p>
