@@ -4,7 +4,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
-    turbo: {
+    turbopack: {
       rules: {
         '*.svg': {
           loaders: ['@svgr/webpack'],
