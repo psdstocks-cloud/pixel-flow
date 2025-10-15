@@ -3,7 +3,7 @@ import Google from 'next-auth/providers/google'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 
-const authConfig = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -28,21 +28,20 @@ const authConfig = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as any).role
+        token.role = user.role
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.sub!
-        ;(session.user as any).role = token.role as string
+        session.user.role = token.role as string
       }
       return session
     },
   },
   pages: {
     signIn: '/auth/signin',
+    signUp: '/auth/signup',
   },
 })
-
-export const { handlers, auth, signIn, signOut } = authConfig as any

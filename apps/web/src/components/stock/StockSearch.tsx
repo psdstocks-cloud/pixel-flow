@@ -114,7 +114,7 @@ export function StockSearch({ searchParams, onSearchChange, isLoading }: StockSe
                 />
               </div>
             </div>
-            <Select value={searchParams.site} onValueChange={(value: string) => handleFilterChange('site', value)}>
+            <Select value={searchParams.site} onValueChange={(value) => handleFilterChange('site', value)}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Select site" />
               </SelectTrigger>
@@ -151,7 +151,7 @@ export function StockSearch({ searchParams, onSearchChange, isLoading }: StockSe
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-2 block">Sort by</label>
-                  <Select value={searchParams.sort} onValueChange={(value: string) => handleFilterChange('sort', value)}>
+                  <Select value={searchParams.sort} onValueChange={(value) => handleFilterChange('sort', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Sort by" />
                     </SelectTrigger>
@@ -167,7 +167,7 @@ export function StockSearch({ searchParams, onSearchChange, isLoading }: StockSe
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-2 block">Orientation</label>
-                  <Select value={searchParams.orientation} onValueChange={(value: string) => handleFilterChange('orientation', value)}>
+                  <Select value={searchParams.orientation} onValueChange={(value) => handleFilterChange('orientation', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Orientation" />
                     </SelectTrigger>
@@ -183,7 +183,7 @@ export function StockSearch({ searchParams, onSearchChange, isLoading }: StockSe
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-2 block">Color</label>
-                  <Select value={searchParams.color} onValueChange={(value: string) => handleFilterChange('color', value)}>
+                  <Select value={searchParams.color} onValueChange={(value) => handleFilterChange('color', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Color" />
                     </SelectTrigger>
