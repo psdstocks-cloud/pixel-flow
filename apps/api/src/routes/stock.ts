@@ -1,4 +1,5 @@
 import express from 'express'
+import { Readable } from 'stream'
 import { z } from 'zod'
 
 const router = express.Router()
@@ -173,16 +174,48 @@ router.get('/order/:taskId/download', async (req, res, next) => {
     })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
 
-    // If follow=true, extract link and stream file back via this server
+    // If follow=true, extract link and stream file back via this server (with headers)
     if (follow) {
       try {
         const ct = r.headers?.get?.('content-type') || ''
         if (ct.includes('application/json')) {
-          const data = await r.json()
+          const clone = r.clone()
+          const data = await clone.json()
           const link: string | undefined =
             data?.downloadLink || data?.link || data?.url || data?.downloadUrl
           if (link) {
             const fileResp = await fetch(link)
+
+            // Mirror CDN headers
+            const fileCT = fileResp.headers?.get?.('content-type') || ''
+            const fileCL = fileResp.headers?.get?.('content-length') || ''
+
+            // Set content-disposition when we know the file name
+            const fname = (data as any)?.fileName
+            if (fname) {
+              res.setHeader('content-disposition', `attachment; filename="${fname}"`)
+            }
+            if (fileCT) res.setHeader('content-type', fileCT)
+            if (fileCL) res.setHeader('content-length', fileCL)
+
+            // Stream the response if supported
+            const body: any = (fileResp as any).body
+            try {
+              const toNode = (Readable as any).fromWeb
+              if (body && typeof toNode === 'function') {
+                const nodeStream = toNode(body)
+                res.status(fileResp.status)
+                return nodeStream.pipe(res)
+              }
+              if (body && typeof (body as any).pipe === 'function') {
+                res.status(fileResp.status)
+                return (body as any).pipe(res)
+              }
+            } catch {
+              // fall through to buffered responder
+            }
+
+            // Fallback: buffer then respond
             return respondByContentType(fileResp as any, res)
           }
         }
