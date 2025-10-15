@@ -123,19 +123,14 @@ router.post('/order', async (req, res, next) => {
     const notify = notificationChannel || process.env.NEHTW_NOTIFY
 
     const path = site && id ? `/stockorder/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockorder'
-    const fullUrl = buildUrl(path)
+    const fullUrl = buildUrl(path, {
+      url,
+      responsetype,
+      notificationChannel: notify,
+    })
 
-    const body: Record<string, any> = {}
-    if (url) body.url = url
-    if (responsetype) body.responsetype = responsetype
-    if (notify) body.notificationChannel = notify
-
-    const r = await fetch(fullUrl as any, {
-      method: 'POST',
-      headers: { ...withApiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    } as any)
-
+    // Upstream only supports GET; send as query params
+    const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
