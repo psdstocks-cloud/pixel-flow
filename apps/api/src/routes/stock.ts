@@ -1,8 +1,6 @@
 import express from 'express'
 import { Readable } from 'stream'
 import { z } from 'zod'
-import type { Response } from 'undici'
-import type { ReadableStream } from 'node:stream/web'
 
 const router = express.Router()
 
@@ -21,6 +19,9 @@ type DownloadResponse = {
   downloadUrl?: string
   fileName?: string
 }
+
+type FetchResponse = Awaited<ReturnType<typeof fetch>>
+type NodeReadableStream = import('node:stream/web').ReadableStream<Uint8Array>
 
 const DEFAULT_HEADERS: Record<string, string> = {
   'User-Agent': 'pixel-flow/1.0 (+https://github.com/psdstocks-cloud/pixel-flow)',
@@ -45,7 +46,7 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url.toString()
 }
 
-async function respondByContentType(r: Response, res: express.Response) {
+async function respondByContentType(r: FetchResponse, res: express.Response) {
   const contentType = r.headers?.get('content-type') || ''
   if (contentType.includes('application/json')) {
     try {
@@ -209,7 +210,7 @@ router.get('/order/:taskId/download', async (req, res, next) => {
             if (fileCL) res.setHeader('content-length', fileCL)
 
             // Stream the response if supported
-            const body: ReadableStream<Uint8Array> | null = fileResp.body
+            const body = fileResp.body as unknown as NodeReadableStream | null
             try {
               const fromWeb = typeof Readable.fromWeb === 'function' ? Readable.fromWeb : null
               if (body && fromWeb) {
