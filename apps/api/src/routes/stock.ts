@@ -1,6 +1,8 @@
 import express from 'express'
 import { Readable } from 'stream'
 import { z } from 'zod'
+import type { Response } from 'undici'
+import type { ReadableStream } from 'node:stream/web'
 
 const router = express.Router()
 
@@ -10,6 +12,14 @@ const API_KEY = process.env.NEHTW_API_KEY
 if (!API_KEY) {
   // eslint-disable-next-line no-console
   console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.')
+}
+
+type DownloadResponse = {
+  downloadLink?: string
+  link?: string
+  url?: string
+  downloadUrl?: string
+  fileName?: string
 }
 
 const DEFAULT_HEADERS: Record<string, string> = {
@@ -35,9 +45,9 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url.toString()
 }
 
-async function respondByContentType(r: any, res: express.Response) {
-  const contentType = (r.headers?.get && r.headers.get('content-type')) || ''
-  if (typeof r.json === 'function' && contentType.includes('application/json')) {
+async function respondByContentType(r: Response, res: express.Response) {
+  const contentType = r.headers?.get('content-type') || ''
+  if (contentType.includes('application/json')) {
     try {
       const data = await r.json()
       return res.status(r.ok ? 200 : r.status).json(data)
@@ -97,7 +107,7 @@ function badRequest(res: express.Response, issues: z.ZodIssue[]) {
 router.get('/sites', async (_req, res, next) => {
   try {
     const url = buildUrl('/stocksites')
-    const r = await fetch(url as any, { headers: withApiKey() } as any)
+    const r = await fetch(url, { headers: withApiKey() })
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
@@ -112,7 +122,7 @@ router.get('/info', async (req, res, next) => {
     const { site, id, url } = parsed.data
     const path = site && id ? `/stockinfo/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockinfo'
     const fullUrl = buildUrl(path, { url })
-    const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
+    const r = await fetch(fullUrl, { headers: withApiKey() })
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
@@ -136,7 +146,7 @@ router.post('/order', async (req, res, next) => {
     })
 
     // Upstream only supports GET; send as query params
-    const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
+    const r = await fetch(fullUrl, { headers: withApiKey() })
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
@@ -154,7 +164,7 @@ router.get('/order/:taskId/status', async (req, res, next) => {
       responsetype,
       responseType: responsetype,
     })
-    const r = await fetch(url as any, { headers: withApiKey() } as any)
+    const r = await fetch(url, { headers: withApiKey() })
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
@@ -172,26 +182,26 @@ router.get('/order/:taskId/download', async (req, res, next) => {
       responsetype,
       responseType: responsetype,
     })
-    const r = await fetch(url as any, { headers: withApiKey() } as any)
+    const r = await fetch(url, { headers: withApiKey() })
 
     // If follow=true, extract link and stream file back via this server (with headers)
     if (follow) {
       try {
-        const ct = r.headers?.get?.('content-type') || ''
+        const ct = r.headers?.get('content-type') || ''
         if (ct.includes('application/json')) {
           const clone = r.clone()
-          const data = await clone.json()
+          const data = (await clone.json()) as DownloadResponse
           const link: string | undefined =
             data?.downloadLink || data?.link || data?.url || data?.downloadUrl
           if (link) {
             const fileResp = await fetch(link)
 
             // Mirror CDN headers
-            const fileCT = fileResp.headers?.get?.('content-type') || ''
-            const fileCL = fileResp.headers?.get?.('content-length') || ''
+            const fileCT = fileResp.headers?.get('content-type') || ''
+            const fileCL = fileResp.headers?.get('content-length') || ''
 
             // Set content-disposition when we know the file name
-            const fname = (data as any)?.fileName
+            const fname = data?.fileName
             if (fname) {
               res.setHeader('content-disposition', `attachment; filename="${fname}"`)
             }
@@ -199,24 +209,20 @@ router.get('/order/:taskId/download', async (req, res, next) => {
             if (fileCL) res.setHeader('content-length', fileCL)
 
             // Stream the response if supported
-            const body: any = (fileResp as any).body
+            const body: ReadableStream<Uint8Array> | null = fileResp.body
             try {
-              const toNode = (Readable as any).fromWeb
-              if (body && typeof toNode === 'function') {
-                const nodeStream = toNode(body)
+              const fromWeb = typeof Readable.fromWeb === 'function' ? Readable.fromWeb : null
+              if (body && fromWeb) {
+                const nodeStream = fromWeb(body)
                 res.status(fileResp.status)
                 return nodeStream.pipe(res)
-              }
-              if (body && typeof (body as any).pipe === 'function') {
-                res.status(fileResp.status)
-                return (body as any).pipe(res)
               }
             } catch {
               // fall through to buffered responder
             }
 
             // Fallback: buffer then respond
-            return respondByContentType(fileResp as any, res)
+            return respondByContentType(fileResp, res)
           }
         }
       } catch {
@@ -227,9 +233,9 @@ router.get('/order/:taskId/download', async (req, res, next) => {
     // If redirect=true, 302 to the direct link
     if (redirect) {
       try {
-        const ct = r.headers?.get?.('content-type') || ''
+        const ct = r.headers?.get('content-type') || ''
         if (ct.includes('application/json')) {
-          const data = await r.json()
+          const data = (await r.json()) as DownloadResponse
           const link: string | undefined =
             data?.downloadLink || data?.link || data?.url || data?.downloadUrl
           if (link) return res.redirect(302, link)
