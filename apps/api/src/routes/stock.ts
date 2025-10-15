@@ -79,10 +79,12 @@ const OrderBodySchema = z
   })
 
 const StatusQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
+
 const DownloadQuerySchema = z
   .object({
     responsetype: ResponseTypeEnum,
     redirect: z.coerce.boolean().optional(),
+    follow: z.coerce.boolean().optional(),
   })
   .strict()
 
@@ -158,19 +160,38 @@ router.get('/order/:taskId/status', async (req, res, next) => {
   }
 })
 
-// GET /stock/order/:taskId/download?responsetype=any|gdrive|asia|mydrivelink&redirect=true
+// GET /stock/order/:taskId/download?responsetype=any|gdrive|asia|mydrivelink&redirect=true&follow=true
 router.get('/order/:taskId/download', async (req, res, next) => {
   try {
     const { taskId } = req.params
     const parsed = DownloadQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { responsetype, redirect } = parsed.data
+    const { responsetype, redirect, follow } = parsed.data
     const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, {
       responsetype,
       responseType: responsetype,
     })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
 
+    // If follow=true, extract link and stream file back via this server
+    if (follow) {
+      try {
+        const ct = r.headers?.get?.('content-type') || ''
+        if (ct.includes('application/json')) {
+          const data = await r.json()
+          const link: string | undefined =
+            data?.downloadLink || data?.link || data?.url || data?.downloadUrl
+          if (link) {
+            const fileResp = await fetch(link)
+            return respondByContentType(fileResp as any, res)
+          }
+        }
+      } catch {
+        // fall through to default responder
+      }
+    }
+
+    // If redirect=true, 302 to the direct link
     if (redirect) {
       try {
         const ct = r.headers?.get?.('content-type') || ''
