@@ -79,7 +79,12 @@ const OrderBodySchema = z
   })
 
 const StatusQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
-const DownloadQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
+const DownloadQuerySchema = z
+  .object({
+    responsetype: ResponseTypeEnum,
+    redirect: z.coerce.boolean().optional(),
+  })
+  .strict()
 
 function badRequest(res: express.Response, issues: z.ZodIssue[]) {
   return res.status(400).json({ error: 'ValidationError', issues })
@@ -153,18 +158,33 @@ router.get('/order/:taskId/status', async (req, res, next) => {
   }
 })
 
-// GET /stock/order/:taskId/download?responsetype=any|gdrive|asia|mydrivelink
+// GET /stock/order/:taskId/download?responsetype=any|gdrive|asia|mydrivelink&redirect=true
 router.get('/order/:taskId/download', async (req, res, next) => {
   try {
     const { taskId } = req.params
     const parsed = DownloadQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { responsetype } = parsed.data
+    const { responsetype, redirect } = parsed.data
     const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, {
       responsetype,
       responseType: responsetype,
     })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
+
+    if (redirect) {
+      try {
+        const ct = r.headers?.get?.('content-type') || ''
+        if (ct.includes('application/json')) {
+          const data = await r.json()
+          const link: string | undefined =
+            data?.downloadLink || data?.link || data?.url || data?.downloadUrl
+          if (link) return res.redirect(302, link)
+        }
+      } catch {
+        // fall through to default responder
+      }
+    }
+
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
