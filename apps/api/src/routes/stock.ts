@@ -63,9 +63,7 @@ const InfoQuerySchema = z
   })
   .refine(
     (d) => (d.url && !d.site && !d.id) || (!!d.site && !!d.id && !d.url) || (!!d.url && !!d.site && !!d.id),
-    {
-      message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.',
-    }
+    { message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.' }
   )
 
 const OrderBodySchema = z
@@ -81,7 +79,6 @@ const OrderBodySchema = z
   })
 
 const StatusQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
-
 const DownloadQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
 
 function badRequest(res: express.Response, issues: z.ZodIssue[]) {
@@ -126,6 +123,7 @@ router.post('/order', async (req, res, next) => {
     const fullUrl = buildUrl(path, {
       url,
       responsetype,
+      responseType: responsetype,
       notificationChannel: notify,
     })
 
@@ -144,7 +142,10 @@ router.get('/order/:taskId/status', async (req, res, next) => {
     const parsed = StatusQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
     const { responsetype } = parsed.data
-    const url = buildUrl(`/order/${encodeURIComponent(taskId)}/status`, { responsetype })
+    const url = buildUrl(`/order/${encodeURIComponent(taskId)}/status`, {
+      responsetype,
+      responseType: responsetype,
+    })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
     return respondByContentType(r, res)
   } catch (err) {
@@ -159,7 +160,10 @@ router.get('/order/:taskId/download', async (req, res, next) => {
     const parsed = DownloadQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
     const { responsetype } = parsed.data
-    const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, { responsetype })
+    const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, {
+      responsetype,
+      responseType: responsetype,
+    })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
     return respondByContentType(r, res)
   } catch (err) {
