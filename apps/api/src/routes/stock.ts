@@ -61,9 +61,12 @@ const InfoQuerySchema = z
     id: z.string().min(1).optional(),
     url: z.string().url().optional(),
   })
-  .refine((d) => (d.url && !d.site && !d.id) || (!!d.site && !!d.id && !d.url) || (!!d.url && !!d.site && !!d.id), {
-    message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.',
-  })
+  .refine(
+    (d) => (d.url && !d.site && !d.id) || (!!d.site && !!d.id && !d.url) || (!!d.url && !!d.site && !!d.id),
+    {
+      message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.',
+    }
+  )
 
 const OrderBodySchema = z
   .object({
@@ -71,6 +74,7 @@ const OrderBodySchema = z
     id: z.string().min(1).optional(),
     url: z.string().url().optional(),
     responsetype: ResponseTypeEnum,
+    notificationChannel: z.string().optional(),
   })
   .refine((d) => (!!d.url && !d.site && !d.id) || (!!d.site && !!d.id), {
     message: 'Provide url OR both site and id.',
@@ -110,15 +114,28 @@ router.get('/info', async (req, res, next) => {
   }
 })
 
-// POST /stock/order { site, id, url, responsetype }
+// POST /stock/order { site, id, url, responsetype, notificationChannel? }
 router.post('/order', async (req, res, next) => {
   try {
     const parsed = OrderBodySchema.safeParse(req.body)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { site, id, url, responsetype } = parsed.data
+    const { site, id, url, responsetype, notificationChannel } = parsed.data
+    const notify = notificationChannel || process.env.NEHTW_NOTIFY
+
     const path = site && id ? `/stockorder/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockorder'
-    const fullUrl = buildUrl(path, { url, responsetype })
-    const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
+    const fullUrl = buildUrl(path)
+
+    const body: Record<string, any> = {}
+    if (url) body.url = url
+    if (responsetype) body.responsetype = responsetype
+    if (notify) body.notificationChannel = notify
+
+    const r = await fetch(fullUrl as any, {
+      method: 'POST',
+      headers: { ...withApiKey(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    } as any)
+
     return respondByContentType(r, res)
   } catch (err) {
     next(err)
