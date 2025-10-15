@@ -1,4 +1,5 @@
 import express from 'express'
+import { z } from 'zod'
 
 const router = express.Router()
 
@@ -51,6 +52,38 @@ async function respondByContentType(r: any, res: express.Response) {
   return res.status(r.status).send(buf)
 }
 
+// ===== Schemas =====
+const ResponseTypeEnum = z.enum(['any', 'gdrive', 'asia', 'mydrivelink']).optional()
+
+const InfoQuerySchema = z
+  .object({
+    site: z.string().min(1).optional(),
+    id: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+  })
+  .refine((d) => (d.url && !d.site && !d.id) || (!!d.site && !!d.id && !d.url) || (!!d.url && !!d.site && !!d.id), {
+    message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.',
+  })
+
+const OrderBodySchema = z
+  .object({
+    site: z.string().min(1).optional(),
+    id: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    responsetype: ResponseTypeEnum,
+  })
+  .refine((d) => (!!d.url && !d.site && !d.id) || (!!d.site && !!d.id), {
+    message: 'Provide url OR both site and id.',
+  })
+
+const StatusQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
+
+const DownloadQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
+
+function badRequest(res: express.Response, issues: z.ZodIssue[]) {
+  return res.status(400).json({ error: 'ValidationError', issues })
+}
+
 // GET /stock/sites -> list supported sites/pricing
 router.get('/sites', async (_req, res, next) => {
   try {
@@ -65,10 +98,9 @@ router.get('/sites', async (_req, res, next) => {
 // GET /stock/info?site=...&id=...&url=...
 router.get('/info', async (req, res, next) => {
   try {
-    const { site, id, url } = req.query as { site?: string; id?: string; url?: string }
-    if (!site && !url) {
-      return res.status(400).json({ error: "Missing 'site' or 'url'" })
-    }
+    const parsed = InfoQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { site, id, url } = parsed.data
     const path = site && id ? `/stockinfo/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockinfo'
     const fullUrl = buildUrl(path, { url })
     const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
@@ -81,15 +113,9 @@ router.get('/info', async (req, res, next) => {
 // POST /stock/order { site, id, url, responsetype }
 router.post('/order', async (req, res, next) => {
   try {
-    const { site, id, url, responsetype } = req.body as {
-      site?: string
-      id?: string
-      url?: string
-      responsetype?: 'any' | 'gdrive' | 'asia' | 'mydrivelink'
-    }
-    if (!site && !url) {
-      return res.status(400).json({ error: "Missing 'site' or 'url'" })
-    }
+    const parsed = OrderBodySchema.safeParse(req.body)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { site, id, url, responsetype } = parsed.data
     const path = site && id ? `/stockorder/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockorder'
     const fullUrl = buildUrl(path, { url, responsetype })
     const r = await fetch(fullUrl as any, { headers: withApiKey() } as any)
@@ -103,7 +129,9 @@ router.post('/order', async (req, res, next) => {
 router.get('/order/:taskId/status', async (req, res, next) => {
   try {
     const { taskId } = req.params
-    const { responsetype } = req.query as { responsetype?: string }
+    const parsed = StatusQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { responsetype } = parsed.data
     const url = buildUrl(`/order/${encodeURIComponent(taskId)}/status`, { responsetype })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
     return respondByContentType(r, res)
@@ -116,7 +144,9 @@ router.get('/order/:taskId/status', async (req, res, next) => {
 router.get('/order/:taskId/download', async (req, res, next) => {
   try {
     const { taskId } = req.params
-    const { responsetype } = req.query as { responsetype?: string }
+    const parsed = DownloadQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { responsetype } = parsed.data
     const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, { responsetype })
     const r = await fetch(url as any, { headers: withApiKey() } as any)
     return respondByContentType(r, res)
