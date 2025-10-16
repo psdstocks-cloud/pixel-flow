@@ -99,6 +99,66 @@ function validate(values: FormValues): FormErrors {
   return errors
 }
 
+type SiteIdDetection = {
+  site?: string
+  id?: string
+}
+
+type DetectionRule = {
+  pattern: RegExp
+  resolve: (match: RegExpMatchArray) => SiteIdDetection
+}
+
+const detectionRules: DetectionRule[] = [
+  {
+    pattern: /shutterstock\.com\/(?:[a-z-]+\/)*(?:image|image-photo|image-vector|image-illustration|image-generated|editorial)\/[a-z0-9-]+-(\d+)(?:[/?]|$)/i,
+    resolve: (match) => ({ site: 'shutterstock', id: match[1] }),
+  },
+  {
+    pattern: /shutterstock\.com\/video\/clip-(\d+)(?:[/?]|$)/i,
+    resolve: (match) => ({ site: 'vshutter', id: match[1] }),
+  },
+  {
+    pattern: /stock\.adobe\.com\/(?:[^?]*?)(?:asset_id=)?(\d+)(?:[/?&]|$)/i,
+    resolve: (match) => ({ site: 'adobestock', id: match[1] }),
+  },
+  {
+    pattern: /depositphotos\.com\/(?:[a-z-]*\/)?(\d+)(?:[/?]|$)/i,
+    resolve: (match) => ({ site: 'depositphotos', id: match[1] }),
+  },
+]
+
+function detectSiteAndIdFromUrl(url: string, sites: StockSite[]): SiteIdDetection | null {
+  if (!url || sites.length === 0) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  } catch {
+    return null
+  }
+
+  const availableSites = new Set(sites.map((site) => site.site))
+  for (const rule of detectionRules) {
+    const match = url.match(rule.pattern)
+    if (!match) continue
+    const resolved = rule.resolve(match)
+    const site = resolved.site && availableSites.has(resolved.site) ? resolved.site : undefined
+    const id = resolved.id
+    if (site || id) {
+      return { site, id }
+    }
+  }
+
+  return null
+}
+
+type BulkOrderResult = {
+  url: string
+  status: 'success' | 'error'
+  message: string
+  taskId?: string
+}
+
 export default function StockOrderPage() {
   const [formValues, setFormValues] = useState<FormValues>(initialFormValues)
   const [formErrors, setFormErrors] = useState<FormErrors>({})
@@ -106,6 +166,11 @@ export default function StockOrderPage() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [pollingEnabled, setPollingEnabled] = useState(false)
   const [statusSnapshot, setStatusSnapshot] = useState<StockStatusResponse | null>(null)
+  const [bulkInput, setBulkInput] = useState('')
+  const [bulkResponseType, setBulkResponseType] = useState<FormValues['responsetype']>('any')
+  const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
+  const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -121,6 +186,37 @@ export default function StockOrderPage() {
       : sitesQuery.isError
         ? 'Unable to load stock sites.'
         : null
+
+  const detectionPreview = useMemo(() => {
+    const trimmed = formValues.url.trim()
+    if (!trimmed) return null
+    return detectSiteAndIdFromUrl(trimmed, sites)
+  }, [formValues.url, sites])
+
+  const detectionMessage = useMemo(() => {
+    const trimmed = formValues.url.trim()
+    if (!trimmed) return null
+    if (!isValidHttpUrl(trimmed)) return 'Enter a valid URL to enable auto-detection.'
+    if (!detectionPreview) return 'Provider detection unavailable for this URL.'
+    return null
+  }, [formValues.url, detectionPreview])
+
+  useEffect(() => {
+    if (!detectionPreview) return
+    setFormValues((prev) => {
+      let changed = false
+      const next = { ...prev }
+      if (!prev.site && detectionPreview.site) {
+        next.site = detectionPreview.site
+        changed = true
+      }
+      if (!prev.id && detectionPreview.id) {
+        next.id = detectionPreview.id
+        changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [detectionPreview])
 
   const orderStatusQuery = useQuery<StockStatusResponse>({
     queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
@@ -224,6 +320,72 @@ export default function StockOrderPage() {
 
   const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
 
+  const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const lines = bulkInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    const notification = bulkNotificationChannel.trim()
+    if (notification && !isValidNotificationChannel(notification)) {
+      setBulkResults([
+        {
+          url: 'Notification channel',
+          status: 'error',
+          message: 'Provide a valid webhook URL or email address for bulk orders.',
+        },
+      ])
+      return
+    }
+
+    if (lines.length === 0) {
+      setBulkResults([
+        { url: 'Bulk queue', status: 'error', message: 'Add at least one URL to queue.' },
+      ])
+      return
+    }
+
+    setBulkSubmitting(true)
+    const results: BulkOrderResult[] = []
+
+    for (const rawUrl of lines) {
+      const detection = detectSiteAndIdFromUrl(rawUrl, sites)
+      const payload: StockOrderPayload = {
+        url: isValidHttpUrl(rawUrl) ? rawUrl : undefined,
+        site: detection?.site,
+        id: detection?.id,
+        responsetype: bulkResponseType,
+        notificationChannel: notification || undefined,
+      }
+
+      if (!payload.url && !(payload.site && payload.id)) {
+        results.push({
+          url: rawUrl,
+          status: 'error',
+          message: 'Could not detect provider. Add site and ID manually.',
+        })
+        continue
+      }
+
+      try {
+        const response = await createOrder(payload)
+        results.push({
+          url: rawUrl,
+          status: 'success',
+          message: response.message ?? 'Queued.',
+          taskId: response.taskId,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to queue order.'
+        results.push({ url: rawUrl, status: 'error', message })
+      }
+    }
+
+    setBulkResults(results)
+    setBulkSubmitting(false)
+  }
+
   return (
     <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
       <SectionHeader
@@ -287,6 +449,18 @@ export default function StockOrderPage() {
                 placeholder="https://example.com/asset"
                 style={{ width: '100%', padding: '10px 12px' }}
               />
+              {formValues.url.trim().length > 0 ? (
+                <p style={{ margin: '8px 0 0', fontSize: 13, color: '#475569' }}>
+                  {detectionMessage ? (
+                    detectionMessage
+                  ) : detectionPreview ? (
+                    <span>
+                      Detected provider: <strong>{detectionPreview.site}</strong>
+                      {detectionPreview.id ? ` • asset ID ${detectionPreview.id}` : ''}
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
             </Field>
 
             <Field label="Response type">
@@ -457,6 +631,157 @@ export default function StockOrderPage() {
             <p style={{ color: '#94a3b8', margin: 0 }}>
               Submit an order to see its status here.
             </p>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
+        <Card
+          title="Bulk queue"
+          description="Submit multiple asset URLs at once. We’ll auto-detect supported providers when possible."
+        >
+          <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 16 }}>
+            <Field label="Asset URLs" hint="Enter one URL per line.">
+              <textarea
+                value={bulkInput}
+                onChange={(event) => setBulkInput(event.target.value)}
+                rows={6}
+                placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
+                style={{ width: '100%', padding: '10px 12px', resize: 'vertical' }}
+              />
+            </Field>
+
+            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              <Field label="Response type">
+                <select
+                  value={bulkResponseType}
+                  onChange={(event) =>
+                    setBulkResponseType(event.target.value as FormValues['responsetype'])
+                  }
+                  style={{ width: '100%', padding: '10px 12px' }}
+                >
+                  <option value="any">Any (auto)</option>
+                  <option value="gdrive">Google Drive</option>
+                  <option value="asia">Asia CDN</option>
+                  <option value="mydrivelink">My Drive Link</option>
+                </select>
+              </Field>
+
+              <Field label="Notification channel" hint="Optional email or webhook for all queued tasks.">
+                <input
+                  value={bulkNotificationChannel}
+                  onChange={(event) => setBulkNotificationChannel(event.target.value)}
+                  placeholder="https://hooks.slack.com/... or email@example.com"
+                  style={{ width: '100%', padding: '10px 12px' }}
+                />
+              </Field>
+            </div>
+
+            <button
+              type="submit"
+              disabled={bulkSubmitting}
+              style={{
+                padding: '12px 18px',
+                borderRadius: 12,
+                background: '#0f766e',
+                color: '#fff',
+                fontWeight: 600,
+                border: 'none',
+                cursor: bulkSubmitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
+            </button>
+          </form>
+
+          {bulkResults.length > 0 ? (
+            <div style={{ marginTop: 18, display: 'grid', gap: 12 }}>
+              {bulkResults.map((result) => (
+                <div
+                  key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 10,
+                    padding: 12,
+                    background: result.status === 'success' ? '#ecfdf5' : '#fef2f2',
+                    color: result.status === 'success' ? '#065f46' : '#991b1b',
+                    display: 'grid',
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <StatusBadge status={result.status === 'success' ? 'completed' : 'error'} />
+                    <span style={{ fontWeight: 600 }}>{result.url}</span>
+                  </div>
+                  <span>{result.message}</span>
+                  {result.taskId ? (
+                    <span style={{ fontSize: 13 }}>Task ID: {result.taskId}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </Card>
+
+        <Card
+          title="Provider pricing"
+          description="Live availability and point cost per provider."
+        >
+          {sitesLoading ? (
+            <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
+          ) : sitesError ? (
+            <Toast title="Unavailable" message={sitesError} variant="error" />
+          ) : sites.length === 0 ? (
+            <p style={{ margin: 0, color: '#94a3b8' }}>No providers are currently configured.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {sites.map((site) => {
+                const priceDisplay =
+                  site.price != null
+                    ? `${site.price}${site.currency ? ` ${site.currency}` : ''}`
+                    : '—'
+                return (
+                  <div
+                    key={site.site}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      background: '#fff',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 600 }}>{site.displayName ?? site.site}</span>
+                      <span style={{ fontSize: 13, color: '#64748b' }}>{site.site}</span>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          background: site.active === false ? '#fee2e2' : '#f1f5f9',
+                          color: site.active === false ? '#b91c1c' : '#0f172a',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {site.active === false ? 'Offline' : 'Online'}
+                      </span>
+                      <span style={{ fontSize: 13 }}>Price: {priceDisplay}</span>
+                      {site.minPrice != null ? (
+                        <span style={{ fontSize: 12, color: '#64748b' }}>
+                          Min price: {site.minPrice}
+                          {site.currency ? ` ${site.currency}` : ''}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </Card>
       </div>

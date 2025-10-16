@@ -119,13 +119,15 @@ export function fetchInfo(params: StockInfoRequest, signal?: AbortSignal) {
 }
 
 export function createOrder(body: StockOrderPayload, signal?: AbortSignal) {
-  const url = new URL(withBase('/stock/order'))
-  const query = new URLSearchParams()
-  Object.entries(body).forEach(([key, value]) => {
-    if (value) query.set(key, value)
-  })
-  url.search = query.toString()
-  return fetch(url, { headers: { Accept: 'application/json' }, signal }).then<StockOrderResponse>(handleResponse)
+  return fetch(withBase('/stock/order'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal,
+  }).then<StockOrderResponse>(handleResponse)
 }
 
 export function getOrderStatus(taskId: string, params: StockDownloadOptions = {}, signal?: AbortSignal) {
