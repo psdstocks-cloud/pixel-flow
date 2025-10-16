@@ -432,233 +432,96 @@ export default function StockOrderPage() {
         results.push({ url: rawUrl, status: 'error', message })
       }
     }
-
-    setBulkResults(results)
-    setBulkSubmitting(false)
-  }
-
-  return (
-    <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
-      <SectionHeader
-        title="Stock Order"
-        subtitle="Queue and track stock asset downloads across your connected providers."
-      />
-
-      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
-        <Card
-          title="Order details"
-          description="Provide a URL or a site + ID to begin processing your download task."
         >
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 20 }}>
-            <Field
-              label="Site"
-              hint="Required if you don’t provide a direct URL."
-              error={formErrors.site}
-            >
-              <select
-                value={formValues.site}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, site: event.target.value }))
-                }
-                disabled={sitesLoading}
-                style={{ width: '100%', padding: '10px 12px' }}
-              >
-                <option value="">Select a provider</option>
-                {sites.map((site) => (
-                  <option key={site.site} value={site.site}>
-                    {site.displayName ?? site.site}
-                  </option>
-                ))}
-              </select>
-            </Field>
+          <select
+            value={formValues.site}
+            onChange={(event) =>
+              setFormValues((prev) => ({ ...prev, site: event.target.value }))
+            }
+            disabled={sitesLoading}
+            style={{ width: '100%', padding: '10px 12px' }}
+          >
+            <option value="">Select a provider</option>
+            {sites.map((site) => (
+              <option key={site.site} value={site.site}>
+                {site.displayName ?? site.site}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-            <Field
-              label="Asset ID"
-              hint="The identifier used by the stock provider (e.g. 123456789)."
-              error={formErrors.id}
-            >
-              <input
-                value={formValues.id}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, id: event.target.value }))
-                }
-                placeholder="e.g. 123456789"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-            </Field>
+        <Field
+          label="Asset ID"
+          hint="The identifier used by the stock provider (e.g. 123456789)."
+          error={formErrors.id}
+        >
+          <input
+            value={formValues.id}
+            onChange={(event) =>
+              setFormValues((prev) => ({ ...prev, id: event.target.value }))
+            }
+            placeholder="e.g. 123456789"
+            style={{ width: '100%', padding: '10px 12px' }}
+          />
+        </Field>
 
-            <Field
-              label="Direct URL"
-              hint="Alternative to site + ID. Paste the full asset URL."
-              error={formErrors.url}
-            >
-              <input
-                value={formValues.url}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, url: event.target.value }))
-                }
-                placeholder="https://example.com/asset"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-              {formValues.url.trim().length > 0 ? (
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: '#475569' }}>
-                  {detectionMessage ? (
-                    detectionMessage
-                  ) : detectionPreview ? (
-                    <span>
-                      Detected provider: <strong>{detectionPreview.site}</strong>
-                      {detectionPreview.id ? ` • asset ID ${detectionPreview.id}` : ''}
-                    </span>
-                  ) : null}
-                </p>
+        <Field
+          label="Direct URL"
+          hint="Alternative to site + ID. Paste the full asset URL."
+          error={formErrors.url}
+        >
+          <input
+            value={formValues.url}
+            onChange={(event) =>
+              setFormValues((prev) => ({ ...prev, url: event.target.value }))
+            }
+            placeholder="https://example.com/asset"
+            style={{ width: '100%', padding: '10px 12px' }}
+          />
+          {formValues.url.trim().length > 0 ? (
+            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#475569' }}>
+              {detectionMessage ? (
+                detectionMessage
+              ) : detectionPreview ? (
+                <span>
+                  Detected provider: <strong>{detectionPreview.site}</strong>
+                  {detectionPreview.id ? ` • asset ID ${detectionPreview.id}` : ''}
+                </span>
               ) : null}
-            </Field>
+            </p>
+          ) : null}
+        </Field>
 
-            {infoRequestActive ? (
-              <div
-                style={{
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 12,
-                  padding: 16,
-                  background: '#f8fafc',
-                  display: 'grid',
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: 15 }}>Asset preview</strong>
-                  {previewStatus ? <StatusBadge status={previewStatus} /> : null}
-                </div>
+        {infoRequestActive ? (
+          <div
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 12,
+              padding: 16,
+              background: '#f8fafc',
+              display: 'grid',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: 15 }}>Asset preview</strong>
+              {previewStatus ? <StatusBadge status={previewStatus} /> : null}
+            </div>
 
-                {infoLoading ? (
-                  <Toast title="Fetching details" message="Looking up the asset metadata." variant="info" />
-                ) : infoError ? (
-                  <Toast title="Preview unavailable" message={infoError} variant="error" />
-                ) : infoPreview ? (
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                    {previewImage ? (
-                      <img
-                        src={previewImage}
-                        alt={previewTitle ?? 'Asset preview'}
-                        style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff' }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 96,
-                          height: 96,
-                          borderRadius: 10,
-                          border: '1px dashed #cbd5f5',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: '#fff',
-                          color: '#94a3b8',
-                          fontSize: 12,
-                        }}
-                      >
-                        No preview
-                      </div>
-                    )}
-
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      {previewTitle ? <strong style={{ fontSize: 15 }}>{previewTitle}</strong> : null}
-                      {previewPriceLabel ? (
-                        <span style={{ fontWeight: 600 }}>Price: {previewPriceLabel}</span>
-                      ) : null}
-                      {previewSite || previewId ? (
-                        <span style={{ color: '#475569', fontSize: 13 }}>
-                          {(previewSite ? `Site ${previewSite}` : '') + (previewSite && previewId ? ' • ' : '') + (previewId ? `ID ${previewId}` : '')}
-                        </span>
-                      ) : null}
-                      {previewMessage ? <span style={{ color: '#64748b', fontSize: 13 }}>{previewMessage}</span> : null}
-                    </div>
-                  </div>
+            {infoLoading ? (
+              <Toast title="Fetching details" message="Looking up the asset metadata." variant="info" />
+            ) : infoError ? (
+              <Toast title="Preview unavailable" message={infoError} variant="error" />
+            ) : infoPreview ? (
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                {previewImage ? (
+                  <img
+                    src={previewImage}
+                    alt={previewTitle ?? 'Asset preview'}
+                    style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff' }}
+                  />
                 ) : (
-                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-                    Provide a URL or site + ID to preview the asset.
-                  </p>
-                )}
-              </div>
-            ) : null}
-
-            <Field label="Response type">
-              <select
-                value={formValues.responsetype}
-                onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    responsetype: event.target.value as FormValues['responsetype'],
-                  }))
-                }
-                style={{ width: '100%', padding: '10px 12px' }}
-              >
-                <option value="any">Any (auto)</option>
-                <option value="gdrive">Google Drive</option>
-                <option value="asia">Asia CDN</option>
-                <option value="mydrivelink">My Drive Link</option>
-              </select>
-            </Field>
-
-            <Field
-              label="Notification channel"
-              hint="Optional webhook or email for completion updates."
-            >
-              <input
-                value={formValues.notificationChannel}
-                onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    notificationChannel: event.target.value,
-                  }))
-                }
-                placeholder="https://hooks.slack.com/... or email@example.com"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-            </Field>
-
-            <button
-              className="primary"
-              type="submit"
-              disabled={createOrderMutation.isPending}
-              style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: '#0ea5e9',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
-                
-              }}
-            >
-              {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
-            </button>
-
-            {sitesLoading ? (
-              <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
-            ) : null}
-            {sitesError ? (
-              <Toast title="Could not load providers" message={sitesError} variant="error" />
-            ) : null}
-          </form>
-        </Card>
-
-        <Card
-          title="Task status"
-          description="Monitor progress, download results, and review recent activity."
-        >
-          {latestError ? (
-            <Toast title="Could not queue order" message={latestError.message} variant="error" />
-          ) : showStatusPanel ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <StatusBadge status={currentStatus ?? 'queued'} />
-                  <div>
-                    <strong>Task ID:</strong> {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
-                  </div>
-                </div>
+                  <div
                 {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
                 {typeof currentProgress === 'number' ? (
                   <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
