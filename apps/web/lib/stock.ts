@@ -28,7 +28,20 @@ export type StockSite = {
   categories?: string[]
   minPrice?: number
   currency?: string
+  active?: boolean
+  price?: number
 }
+
+type RawSiteEntry = {
+  displayName?: string
+  categories?: string[]
+  minPrice?: number
+  currency?: string
+  active?: boolean
+  price?: number
+} | string | null | undefined
+
+type RawSitesResponse = Record<string, RawSiteEntry>
 
 export type StockInfoRequest = {
   site?: string
@@ -70,7 +83,25 @@ export function fetchSites(signal?: AbortSignal) {
   return fetch(withBase('/stock/sites'), {
     headers: { Accept: 'application/json' },
     signal,
-  }).then<StockSite[]>(handleResponse)
+  })
+    .then<RawSitesResponse>(handleResponse)
+    .then((data) =>
+      Object.entries(data)
+        .filter(([, value]) => typeof value === 'object' && value !== null)
+        .map<StockSite>(([site, value]) => {
+          const entry = value as Exclude<RawSiteEntry, string | null | undefined>
+          return {
+            site,
+            displayName: entry.displayName,
+            categories: entry.categories,
+            minPrice: entry.minPrice,
+            currency: entry.currency,
+            active: entry.active,
+            price: entry.price,
+          }
+        })
+        .sort((a, b) => a.site.localeCompare(b.site)),
+    )
 }
 
 export function fetchInfo(params: StockInfoRequest, signal?: AbortSignal) {
