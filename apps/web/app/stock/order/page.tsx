@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -12,7 +12,6 @@ import {
 } from '../../../components'
 import {
   createOrder,
-  fetchInfo,
   fetchSites,
   getOrderStatus,
   queries,
@@ -20,7 +19,6 @@ import {
   type StockOrderResponse,
   type StockSite,
   type StockStatusResponse,
-  type StockInfoResult,
   detectSiteAndIdFromUrl,
 } from '../../../lib/stock'
 
@@ -121,13 +119,6 @@ export default function StockOrderPage() {
   const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
   const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
-  const [infoPreview, setInfoPreview] = useState<StockInfoResult | null>(null)
-  const [infoLoading, setInfoLoading] = useState(false)
-  const [infoError, setInfoError] = useState<string | null>(null)
-  const infoAbortRef = useRef<AbortController | null>(null)
-  const infoRequestKeyRef = useRef<string | null>(null)
-  const [autoPoll, setAutoPoll] = useState(true)
-  const [notifyOnComplete, setNotifyOnComplete] = useState(false)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
