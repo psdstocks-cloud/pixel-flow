@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -12,7 +12,6 @@ import {
 } from '../../../components'
 import {
   createOrder,
-  fetchInfo,
   fetchSites,
   getOrderStatus,
   queries,
@@ -20,8 +19,6 @@ import {
   type StockOrderResponse,
   type StockSite,
   type StockStatusResponse,
-  type StockInfoRequest,
-  type StockInfoResult,
   detectSiteAndIdFromUrl,
 } from '../../../lib/stock'
 
@@ -122,12 +119,6 @@ export default function StockOrderPage() {
   const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
   const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
-  const [infoPreview, setInfoPreview] = useState<StockInfoResult | null>(null)
-  const [infoLoading, setInfoLoading] = useState(false)
-  const [infoError, setInfoError] = useState<string | null>(null)
-  const infoAbortRef = useRef<AbortController | null>(null)
-  const infoRequestKeyRef = useRef<string | null>(null)
-  const infoDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -158,43 +149,6 @@ export default function StockOrderPage() {
     return null
   }, [formValues.url, detectionPreview])
 
-  const infoRequest = useMemo<StockInfoRequest | null>(() => {
-    const trimmedUrl = formValues.url.trim()
-    const trimmedSite = formValues.site.trim()
-    const trimmedId = formValues.id.trim()
-
-    if (trimmedUrl && isValidHttpUrl(trimmedUrl)) {
-      return { url: trimmedUrl }
-    }
-
-    if (trimmedSite && trimmedId) {
-      return { site: trimmedSite, id: trimmedId }
-    }
-
-    return null
-  }, [formValues.url, formValues.site, formValues.id])
-
-  const infoRequestKey = infoRequest ? JSON.stringify(infoRequest) : null
-  const infoRequestActive = Boolean(infoRequestKey)
-  const previewTitle = infoPreview?.title || infoPreview?.name || null
-  const previewImage =
-    infoPreview?.thumb ||
-    infoPreview?.thumbnail ||
-    infoPreview?.preview ||
-    infoPreview?.image ||
-    null
-  const previewPrice =
-    infoPreview?.price ?? infoPreview?.cost ?? infoPreview?.points ?? null
-  const previewCurrency = infoPreview?.currency ?? null
-  const previewStatus = infoPreview?.status ?? null
-  const previewMessage = infoPreview?.message ?? null
-  const previewSite =
-    infoPreview?.site || detectionPreview?.site || formValues.site.trim() || null
-  const previewId = infoPreview?.id || detectionPreview?.id || formValues.id.trim() || null
-  const previewPriceLabel = previewPrice != null
-    ? `${previewPrice}${previewCurrency ? ` ${previewCurrency}` : ''}`
-    : null
-
   useEffect(() => {
     if (!detectionPreview) return
     setFormValues((prev) => {
@@ -211,63 +165,6 @@ export default function StockOrderPage() {
       return changed ? next : prev
     })
   }, [detectionPreview])
-
-  useEffect(() => {
-    if (infoDebounceRef.current) {
-      clearTimeout(infoDebounceRef.current)
-      infoDebounceRef.current = null
-    }
-
-    if (!infoRequestActive || !infoRequestKey) {
-      if (infoAbortRef.current) {
-        infoAbortRef.current.abort()
-        infoAbortRef.current = null
-      }
-      infoRequestKeyRef.current = null
-      setInfoPreview(null)
-      setInfoError(null)
-      setInfoLoading(false)
-      return
-    }
-
-    const requestPayload = infoRequest
-    infoDebounceRef.current = setTimeout(() => {
-      if (infoAbortRef.current) {
-        infoAbortRef.current.abort()
-      }
-      const controller = new AbortController()
-      infoAbortRef.current = controller
-      infoRequestKeyRef.current = infoRequestKey
-      setInfoLoading(true)
-      setInfoError(null)
-
-      fetchInfo(requestPayload!, controller.signal)
-        .then((result) => {
-          if (infoRequestKeyRef.current !== infoRequestKey) return
-          setInfoPreview(result)
-          setInfoLoading(false)
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return
-          if (infoRequestKeyRef.current !== infoRequestKey) return
-          const message = error instanceof Error ? error.message : 'Unable to load asset details.'
-          setInfoError(message)
-          setInfoPreview(null)
-          setInfoLoading(false)
-        })
-    }, 400)
-
-    return () => {
-      if (infoDebounceRef.current) {
-        clearTimeout(infoDebounceRef.current)
-        infoDebounceRef.current = null
-      }
-      if (infoAbortRef.current) {
-        infoAbortRef.current.abort()
-        infoAbortRef.current = null
-      }
-    }
-  }, [infoRequest, infoRequestActive, infoRequestKey])
 
   const orderStatusQuery = useQuery<StockStatusResponse>({
     queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
@@ -401,16 +298,13 @@ export default function StockOrderPage() {
     const results: BulkOrderResult[] = []
 
     for (const rawUrl of lines) {
-      const detection = detectSiteAndIdFromUrl(rawUrl, sites)
-      const payload: StockOrderPayload = {
-        url: isValidHttpUrl(rawUrl) ? rawUrl : undefined,
-        site: detection?.site,
-        id: detection?.id,
-        responsetype: bulkResponseType,
-        notificationChannel: notification || undefined,
-      }
+      const trimmedUrl = rawUrl.trim()
+      const detection = detectSiteAndIdFromUrl(trimmedUrl, sites)
+      const url = isValidHttpUrl(trimmedUrl) ? trimmedUrl : undefined
+      const site = detection?.site
+      const id = detection?.id
 
-      if (!payload.url && !(payload.site && payload.id)) {
+      if (!url && !(site && id)) {
         results.push({
           url: rawUrl,
           status: 'error',
@@ -420,7 +314,13 @@ export default function StockOrderPage() {
       }
 
       try {
-        const response = await createOrder(payload)
+        const response = await createOrder({
+          url,
+          site,
+          id,
+          responsetype: bulkResponseType,
+          notificationChannel: notification || undefined,
+        })
         results.push({
           url: rawUrl,
           status: 'success',
@@ -432,96 +332,142 @@ export default function StockOrderPage() {
         results.push({ url: rawUrl, status: 'error', message })
       }
     }
+
+    setBulkResults(results)
+    setBulkSubmitting(false)
+  }
+
+  return (
+    <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
+      <SectionHeader
+        title="Stock Order"
+        subtitle="Queue and track stock asset downloads across your connected providers."
+      />
+      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
+        <Card
+          title="Order stock"
+          description="Submit a stock order for a single asset."
         >
-          <select
-            value={formValues.site}
-            onChange={(event) =>
-              setFormValues((prev) => ({ ...prev, site: event.target.value }))
-            }
-            disabled={sitesLoading}
-            style={{ width: '100%', padding: '10px 12px' }}
-          >
-            <option value="">Select a provider</option>
-            {sites.map((site) => (
-              <option key={site.site} value={site.site}>
-                {site.displayName ?? site.site}
-              </option>
-            ))}
-          </select>
-        </Field>
+          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
+            <Field label="Provider" hint="Select a stock provider.">
+              <select
+                value={formValues.site}
+                onChange={(event) =>
+                  setFormValues((prev) => ({ ...prev, site: event.target.value }))
+                }
+                disabled={sitesLoading}
+                style={{ width: '100%', padding: '10px 12px' }}
+              >
+                <option value="">Select a provider</option>
+                {sites.map((site) => (
+                  <option key={site.site} value={site.site}>
+                    {site.displayName ?? site.site}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
-        <Field
-          label="Asset ID"
-          hint="The identifier used by the stock provider (e.g. 123456789)."
-          error={formErrors.id}
+            <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789).">
+              <input
+                value={formValues.id}
+                onChange={(event) =>
+                  setFormValues((prev) => ({ ...prev, id: event.target.value }))
+                }
+                placeholder="e.g. 123456789"
+                style={{ width: '100%', padding: '10px 12px' }}
+              />
+            </Field>
+
+            <Field
+              label="Direct URL"
+              hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
+              error={formErrors.url}
+            >
+              <input
+                value={formValues.url}
+                onChange={(event) =>
+                  setFormValues((prev) => ({ ...prev, url: event.target.value }))
+                }
+                placeholder="https://example.com/asset"
+                style={{ width: '100%', padding: '10px 12px' }}
+              />
+            </Field>
+
+            <Field label="Response type">
+              <select
+                value={formValues.responsetype}
+                onChange={(event) =>
+                  setFormValues((prev) => ({
+                    ...prev,
+                    responsetype: event.target.value as FormValues['responsetype'],
+                  }))
+                }
+                style={{ width: '100%', padding: '10px 12px' }}
+              >
+                <option value="any">Any (auto)</option>
+                <option value="gdrive">Google Drive</option>
+                <option value="asia">Asia CDN</option>
+                <option value="mydrivelink">My Drive Link</option>
+              </select>
+            </Field>
+
+            <Field
+              label="Notification channel"
+              hint="Optional webhook or email for completion updates."
+            >
+              <input
+                value={formValues.notificationChannel}
+                onChange={(event) =>
+                  setFormValues((prev) => ({
+                    ...prev,
+                    notificationChannel: event.target.value,
+                  }))
+                }
+                placeholder="https://hooks.slack.com/... or email@example.com"
+                style={{ width: '100%', padding: '10px 12px' }}
+              />
+            </Field>
+
+            <button
+              className="primary"
+              type="submit"
+              disabled={createOrderMutation.isPending}
+              style={{
+                padding: '12px 18px',
+                borderRadius: 12,
+                background: '#0ea5e9',
+                color: '#fff',
+                fontWeight: 600,
+                border: 'none',
+                cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
+            </button>
+            {sitesLoading ? (
+              <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
+            ) : null}
+            {sitesError ? (
+              <Toast title="Could not load providers" message={sitesError} variant="error" />
+            ) : null}
+          </form>
+        </Card>
+
+        <Card
+          title="Task status"
+          description="Monitor progress, download results, and review recent activity."
         >
-          <input
-            value={formValues.id}
-            onChange={(event) =>
-              setFormValues((prev) => ({ ...prev, id: event.target.value }))
-            }
-            placeholder="e.g. 123456789"
-            style={{ width: '100%', padding: '10px 12px' }}
-          />
-        </Field>
-
-        <Field
-          label="Direct URL"
-          hint="Alternative to site + ID. Paste the full asset URL."
-          error={formErrors.url}
-        >
-          <input
-            value={formValues.url}
-            onChange={(event) =>
-              setFormValues((prev) => ({ ...prev, url: event.target.value }))
-            }
-            placeholder="https://example.com/asset"
-            style={{ width: '100%', padding: '10px 12px' }}
-          />
-          {formValues.url.trim().length > 0 ? (
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#475569' }}>
-              {detectionMessage ? (
-                detectionMessage
-              ) : detectionPreview ? (
-                <span>
-                  Detected provider: <strong>{detectionPreview.site}</strong>
-                  {detectionPreview.id ? ` • asset ID ${detectionPreview.id}` : ''}
-                </span>
-              ) : null}
-            </p>
-          ) : null}
-        </Field>
-
-        {infoRequestActive ? (
-          <div
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 12,
-              padding: 16,
-              background: '#f8fafc',
-              display: 'grid',
-              gap: 12,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: 15 }}>Asset preview</strong>
-              {previewStatus ? <StatusBadge status={previewStatus} /> : null}
-            </div>
-
-            {infoLoading ? (
-              <Toast title="Fetching details" message="Looking up the asset metadata." variant="info" />
-            ) : infoError ? (
-              <Toast title="Preview unavailable" message={infoError} variant="error" />
-            ) : infoPreview ? (
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                {previewImage ? (
-                  <img
-                    src={previewImage}
-                    alt={previewTitle ?? 'Asset preview'}
-                    style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff' }}
-                  />
-                ) : (
-                  <div
+          {latestError ? (
+            <Toast title="Could not queue order" message={latestError.message} variant="error" />
+          ) : showStatusPanel ? (
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <StatusBadge status={currentStatus ?? 'queued'} />
+                  <div>
+                    <strong>Task ID:</strong> {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
+                  </div>
+                </div>
                 {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
                 {typeof currentProgress === 'number' ? (
                   <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
