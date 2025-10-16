@@ -107,6 +107,34 @@ type BulkOrderResult = {
   taskId?: string
 }
 
+function extractTaskId(response: StockOrderResponse | null | undefined): string | null {
+  if (!response || typeof response !== 'object') return null
+  const asRecord = response as Record<string, unknown>
+  const candidates: Array<unknown> = [
+    response.taskId,
+    asRecord.task_id,
+    response.id,
+    asRecord.task,
+    typeof asRecord.task === 'object' && asRecord.task !== null ? (asRecord.task as Record<string, unknown>).id : undefined,
+    typeof asRecord.task === 'object' && asRecord.task !== null ? (asRecord.task as Record<string, unknown>).taskId : undefined,
+    typeof asRecord.result === 'object' && asRecord.result !== null ? (asRecord.result as Record<string, unknown>).taskId : undefined,
+    typeof asRecord.result === 'object' && asRecord.result !== null ? (asRecord.result as Record<string, unknown>).id : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate == null) continue
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return String(candidate)
+    }
+  }
+
+  return null
+}
+
 export default function StockOrderPage() {
   const [formValues, setFormValues] = useState<FormValues>(initialFormValues)
   const [formErrors, setFormErrors] = useState<FormErrors>({})
@@ -206,12 +234,14 @@ export default function StockOrderPage() {
       setStatusSnapshot(null)
     },
     onSuccess: (data) => {
-      setLatestResult({ status: 'success', response: data })
+      const normalizedTaskId = extractTaskId(data)
+      const response = normalizedTaskId && data.taskId !== normalizedTaskId ? { ...data, taskId: normalizedTaskId } : data
+      setLatestResult({ status: 'success', response })
       setFormErrors({})
       setFormValues(initialFormValues)
-      setActiveTaskId(data.taskId ?? null)
+      setActiveTaskId(normalizedTaskId)
       setStatusSnapshot(null)
-      setPollingEnabled(Boolean(data.taskId))
+      setPollingEnabled(Boolean(normalizedTaskId))
     },
     onError: (error: unknown) => {
       const message =
@@ -326,14 +356,19 @@ export default function StockOrderPage() {
         const detectionDetails = site
           ? `Detected provider: ${site}${id ? ` • ID ${id}` : ''}`
           : null
+        const normalizedTaskId = extractTaskId(response)
+        const enrichedResponse =
+          normalizedTaskId && response.taskId !== normalizedTaskId
+            ? { ...response, taskId: normalizedTaskId }
+            : response
         results.push({
           url: rawUrl,
           status: 'success',
           message: detectionDetails ? `${baseMessage} ${detectionDetails}` : baseMessage,
-          taskId: response.taskId,
+          taskId: normalizedTaskId ?? response.taskId,
         })
-        if (!firstSuccessResponse && response.taskId) {
-          firstSuccessResponse = response
+        if (!firstSuccessResponse && normalizedTaskId) {
+          firstSuccessResponse = enrichedResponse
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to queue order.'
@@ -345,10 +380,15 @@ export default function StockOrderPage() {
     setBulkSubmitting(false)
 
     if (firstSuccessResponse) {
-      setLatestResult({ status: 'success', response: firstSuccessResponse })
-      setActiveTaskId(firstSuccessResponse.taskId ?? null)
+      const normalizedTaskId = extractTaskId(firstSuccessResponse)
+      const response =
+        normalizedTaskId && firstSuccessResponse.taskId !== normalizedTaskId
+          ? { ...firstSuccessResponse, taskId: normalizedTaskId }
+          : firstSuccessResponse
+      setLatestResult({ status: 'success', response })
+      setActiveTaskId(normalizedTaskId)
       setStatusSnapshot(null)
-      setPollingEnabled(Boolean(firstSuccessResponse.taskId))
+      setPollingEnabled(Boolean(normalizedTaskId))
     }
   }
 
