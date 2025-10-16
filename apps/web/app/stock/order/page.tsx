@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -12,6 +12,7 @@ import {
 } from '../../../components'
 import {
   createOrder,
+  fetchInfo,
   fetchSites,
   getOrderStatus,
   queries,
@@ -19,6 +20,8 @@ import {
   type StockOrderResponse,
   type StockSite,
   type StockStatusResponse,
+  type StockInfoRequest,
+  type StockInfoResult,
   detectSiteAndIdFromUrl,
 } from '../../../lib/stock'
 
@@ -119,6 +122,12 @@ export default function StockOrderPage() {
   const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
   const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [infoPreview, setInfoPreview] = useState<StockInfoResult | null>(null)
+  const [infoLoading, setInfoLoading] = useState(false)
+  const [infoError, setInfoError] = useState<string | null>(null)
+  const infoAbortRef = useRef<AbortController | null>(null)
+  const infoRequestKeyRef = useRef<string | null>(null)
+  const infoDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -149,6 +158,43 @@ export default function StockOrderPage() {
     return null
   }, [formValues.url, detectionPreview])
 
+  const infoRequest = useMemo<StockInfoRequest | null>(() => {
+    const trimmedUrl = formValues.url.trim()
+    const trimmedSite = formValues.site.trim()
+    const trimmedId = formValues.id.trim()
+
+    if (trimmedUrl && isValidHttpUrl(trimmedUrl)) {
+      return { url: trimmedUrl }
+    }
+
+    if (trimmedSite && trimmedId) {
+      return { site: trimmedSite, id: trimmedId }
+    }
+
+    return null
+  }, [formValues.url, formValues.site, formValues.id])
+
+  const infoRequestKey = infoRequest ? JSON.stringify(infoRequest) : null
+  const infoRequestActive = Boolean(infoRequestKey)
+  const previewTitle = infoPreview?.title || infoPreview?.name || null
+  const previewImage =
+    infoPreview?.thumb ||
+    infoPreview?.thumbnail ||
+    infoPreview?.preview ||
+    infoPreview?.image ||
+    null
+  const previewPrice =
+    infoPreview?.price ?? infoPreview?.cost ?? infoPreview?.points ?? null
+  const previewCurrency = infoPreview?.currency ?? null
+  const previewStatus = infoPreview?.status ?? null
+  const previewMessage = infoPreview?.message ?? null
+  const previewSite =
+    infoPreview?.site || detectionPreview?.site || formValues.site.trim() || null
+  const previewId = infoPreview?.id || detectionPreview?.id || formValues.id.trim() || null
+  const previewPriceLabel = previewPrice != null
+    ? `${previewPrice}${previewCurrency ? ` ${previewCurrency}` : ''}`
+    : null
+
   useEffect(() => {
     if (!detectionPreview) return
     setFormValues((prev) => {
@@ -165,6 +211,63 @@ export default function StockOrderPage() {
       return changed ? next : prev
     })
   }, [detectionPreview])
+
+  useEffect(() => {
+    if (infoDebounceRef.current) {
+      clearTimeout(infoDebounceRef.current)
+      infoDebounceRef.current = null
+    }
+
+    if (!infoRequestActive || !infoRequestKey) {
+      if (infoAbortRef.current) {
+        infoAbortRef.current.abort()
+        infoAbortRef.current = null
+      }
+      infoRequestKeyRef.current = null
+      setInfoPreview(null)
+      setInfoError(null)
+      setInfoLoading(false)
+      return
+    }
+
+    const requestPayload = infoRequest
+    infoDebounceRef.current = setTimeout(() => {
+      if (infoAbortRef.current) {
+        infoAbortRef.current.abort()
+      }
+      const controller = new AbortController()
+      infoAbortRef.current = controller
+      infoRequestKeyRef.current = infoRequestKey
+      setInfoLoading(true)
+      setInfoError(null)
+
+      fetchInfo(requestPayload!, controller.signal)
+        .then((result) => {
+          if (infoRequestKeyRef.current !== infoRequestKey) return
+          setInfoPreview(result)
+          setInfoLoading(false)
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return
+          if (infoRequestKeyRef.current !== infoRequestKey) return
+          const message = error instanceof Error ? error.message : 'Unable to load asset details.'
+          setInfoError(message)
+          setInfoPreview(null)
+          setInfoLoading(false)
+        })
+    }, 400)
+
+    return () => {
+      if (infoDebounceRef.current) {
+        clearTimeout(infoDebounceRef.current)
+        infoDebounceRef.current = null
+      }
+      if (infoAbortRef.current) {
+        infoAbortRef.current.abort()
+        infoAbortRef.current = null
+      }
+    }
+  }, [infoRequest, infoRequestActive, infoRequestKey])
 
   const orderStatusQuery = useQuery<StockStatusResponse>({
     queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
@@ -410,6 +513,74 @@ export default function StockOrderPage() {
                 </p>
               ) : null}
             </Field>
+
+            {infoRequestActive ? (
+              <div
+                style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  padding: 16,
+                  background: '#f8fafc',
+                  display: 'grid',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: 15 }}>Asset preview</strong>
+                  {previewStatus ? <StatusBadge status={previewStatus} /> : null}
+                </div>
+
+                {infoLoading ? (
+                  <Toast title="Fetching details" message="Looking up the asset metadata." variant="info" />
+                ) : infoError ? (
+                  <Toast title="Preview unavailable" message={infoError} variant="error" />
+                ) : infoPreview ? (
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    {previewImage ? (
+                      <img
+                        src={previewImage}
+                        alt={previewTitle ?? 'Asset preview'}
+                        style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff' }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 96,
+                          height: 96,
+                          borderRadius: 10,
+                          border: '1px dashed #cbd5f5',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#fff',
+                          color: '#94a3b8',
+                          fontSize: 12,
+                        }}
+                      >
+                        No preview
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {previewTitle ? <strong style={{ fontSize: 15 }}>{previewTitle}</strong> : null}
+                      {previewPriceLabel ? (
+                        <span style={{ fontWeight: 600 }}>Price: {previewPriceLabel}</span>
+                      ) : null}
+                      {previewSite || previewId ? (
+                        <span style={{ color: '#475569', fontSize: 13 }}>
+                          {(previewSite ? `Site ${previewSite}` : '') + (previewSite && previewId ? ' • ' : '') + (previewId ? `ID ${previewId}` : '')}
+                        </span>
+                      ) : null}
+                      {previewMessage ? <span style={{ color: '#64748b', fontSize: 13 }}>{previewMessage}</span> : null}
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                    Provide a URL or site + ID to preview the asset.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             <Field label="Response type">
               <select
