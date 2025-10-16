@@ -55,6 +55,25 @@ export type StockInfoRequest = {
   url?: string
 }
 
+export type StockInfoResult = {
+  site?: string
+  id?: string
+  url?: string
+  price?: number
+  cost?: number
+  points?: number
+  currency?: string
+  title?: string
+  name?: string
+  message?: string
+  status?: string
+  thumb?: string
+  thumbnail?: string
+  preview?: string
+  image?: string
+  [key: string]: unknown
+}
+
 export type StockOrderPayload = StockInfoRequest & {
   responsetype?: 'any' | 'gdrive' | 'asia' | 'mydrivelink'
   notificationChannel?: string
@@ -115,7 +134,7 @@ export function fetchInfo(params: StockInfoRequest, signal?: AbortSignal) {
   Object.entries(params).forEach(([key, value]) => {
     if (value) url.searchParams.set(key, value)
   })
-  return fetch(url, { headers: { Accept: 'application/json' }, signal }).then(handleResponse)
+  return fetch(url, { headers: { Accept: 'application/json' }, signal }).then<StockInfoResult>(handleResponse)
 }
 
 export function createOrder(body: StockOrderPayload, signal?: AbortSignal) {
@@ -151,3 +170,5 @@ export const queries = {
   info: (key: StockInfoRequest) => ['stock', 'info', key] as const,
   orderStatus: (taskId: string) => ['stock', 'order', taskId, 'status'] as const,
 }
+
+export { detectSiteAndIdFromUrl, type SiteIdDetection, DETECTION_RULES } from './detection'

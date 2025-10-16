@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -12,6 +12,7 @@ import {
 } from '../../../components'
 import {
   createOrder,
+  fetchInfo,
   fetchSites,
   getOrderStatus,
   queries,
@@ -19,6 +20,8 @@ import {
   type StockOrderResponse,
   type StockSite,
   type StockStatusResponse,
+  type StockInfoResult,
+  detectSiteAndIdFromUrl,
 } from '../../../lib/stock'
 
 type FormValues = {
@@ -99,59 +102,6 @@ function validate(values: FormValues): FormErrors {
   return errors
 }
 
-type SiteIdDetection = {
-  site?: string
-  id?: string
-}
-
-type DetectionRule = {
-  pattern: RegExp
-  resolve: (match: RegExpMatchArray) => SiteIdDetection
-}
-
-const detectionRules: DetectionRule[] = [
-  {
-    pattern: /shutterstock\.com\/(?:[a-z-]+\/)*(?:image|image-photo|image-vector|image-illustration|image-generated|editorial)\/[a-z0-9-]+-(\d+)(?:[/?]|$)/i,
-    resolve: (match) => ({ site: 'shutterstock', id: match[1] }),
-  },
-  {
-    pattern: /shutterstock\.com\/video\/clip-(\d+)(?:[/?]|$)/i,
-    resolve: (match) => ({ site: 'vshutter', id: match[1] }),
-  },
-  {
-    pattern: /stock\.adobe\.com\/(?:[^?]*?)(?:asset_id=)?(\d+)(?:[/?&]|$)/i,
-    resolve: (match) => ({ site: 'adobestock', id: match[1] }),
-  },
-  {
-    pattern: /depositphotos\.com\/(?:[a-z-]*\/)?(\d+)(?:[/?]|$)/i,
-    resolve: (match) => ({ site: 'depositphotos', id: match[1] }),
-  },
-]
-
-function detectSiteAndIdFromUrl(url: string, sites: StockSite[]): SiteIdDetection | null {
-  if (!url || sites.length === 0) return null
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-  } catch {
-    return null
-  }
-
-  const availableSites = new Set(sites.map((site) => site.site))
-  for (const rule of detectionRules) {
-    const match = url.match(rule.pattern)
-    if (!match) continue
-    const resolved = rule.resolve(match)
-    const site = resolved.site && availableSites.has(resolved.site) ? resolved.site : undefined
-    const id = resolved.id
-    if (site || id) {
-      return { site, id }
-    }
-  }
-
-  return null
-}
-
 type BulkOrderResult = {
   url: string
   status: 'success' | 'error'
@@ -171,6 +121,13 @@ export default function StockOrderPage() {
   const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
   const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [infoPreview, setInfoPreview] = useState<StockInfoResult | null>(null)
+  const [infoLoading, setInfoLoading] = useState(false)
+  const [infoError, setInfoError] = useState<string | null>(null)
+  const infoAbortRef = useRef<AbortController | null>(null)
+  const infoRequestKeyRef = useRef<string | null>(null)
+  const [autoPoll, setAutoPoll] = useState(true)
+  const [notifyOnComplete, setNotifyOnComplete] = useState(false)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
