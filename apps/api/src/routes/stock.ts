@@ -100,6 +100,13 @@ const DownloadQuerySchema = z
   })
   .strict()
 
+const ConfirmBodySchema = z
+  .object({
+    responsetype: ResponseTypeEnum,
+  })
+  .partial()
+  .strict()
+
 function badRequest(res: express.Response, issues: z.ZodIssue[]) {
   return res.status(400).json({ error: 'ValidationError', issues })
 }
@@ -162,6 +169,24 @@ router.get('/order/:taskId/status', async (req, res, next) => {
     if (!parsed.success) return badRequest(res, parsed.error.issues)
     const { responsetype } = parsed.data
     const url = buildUrl(`/order/${encodeURIComponent(taskId)}/status`, {
+      responsetype,
+      responseType: responsetype,
+    })
+    const r = await fetch(url, { headers: withApiKey() })
+    return respondByContentType(r, res)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /stock/order/:taskId/confirm { responsetype? }
+router.post('/order/:taskId/confirm', async (req, res, next) => {
+  try {
+    const { taskId } = req.params
+    const parsed = ConfirmBodySchema.safeParse(req.body ?? {})
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { responsetype } = parsed.data
+    const url = buildUrl(`/order/${encodeURIComponent(taskId)}/confirm`, {
       responsetype,
       responseType: responsetype,
     })

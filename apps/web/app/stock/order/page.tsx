@@ -11,6 +11,7 @@ import {
   Toast,
 } from '../../../components'
 import {
+  confirmOrder,
   createOrder,
   fetchSites,
   getOrderStatus,
@@ -302,6 +303,21 @@ export default function StockOrderPage() {
     : queuedAt
 
   const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
+  const normalizedStatus = currentStatus?.toLowerCase?.() ?? ''
+  const shouldShowConfirm = normalizedStatus === 'ready'
+
+  const handleConfirm = async () => {
+    if (!activeTaskId) return
+    try {
+      const response = await confirmOrder(activeTaskId, { responsetype: formValues.responsetype })
+      setStatusSnapshot(response)
+      setPollingEnabled(true)
+      orderStatusQuery.refetch()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to confirm order.'
+      setLatestResult({ status: 'error', message })
+    }
+  }
 
   const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -576,6 +592,22 @@ export default function StockOrderPage() {
                 ) : null}
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {shouldShowConfirm && activeTaskId ? (
+                  <button
+                    type="button"
+                    onClick={handleConfirm}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: '1px solid #0ea5e9',
+                      background: '#0ea5e9',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Confirm download
+                  </button>
+                ) : null}
                 {pollingEnabled ? (
                   <button
                     type="button"

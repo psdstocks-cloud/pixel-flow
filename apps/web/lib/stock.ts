@@ -157,6 +157,18 @@ export function getOrderStatus(taskId: string, params: StockDownloadOptions = {}
   return fetch(url, { headers: { Accept: 'application/json' }, signal }).then<StockStatusResponse>(handleResponse)
 }
 
+export function confirmOrder(taskId: string, body: { responsetype?: StockOrderPayload['responsetype'] } = {}, signal?: AbortSignal) {
+  return fetch(withBase(`/stock/order/${encodeURIComponent(taskId)}/confirm`), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+    signal,
+  }).then<StockStatusResponse>(handleResponse)
+}
+
 export async function downloadOrder(taskId: string, options: StockDownloadOptions = {}) {
   const url = new URL(withBase(`/stock/order/${encodeURIComponent(taskId)}/download`))
   Object.entries(options).forEach(([key, value]) => {
