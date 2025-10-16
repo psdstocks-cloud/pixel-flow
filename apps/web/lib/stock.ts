@@ -6,20 +6,26 @@ const withBase = (path: string) =>
   path.startsWith('http') ? path : `${API_BASE_URL.replace(/\/$/, '')}${path}`
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let detail: unknown
-    try {
-      detail = await res.json()
-    } catch {
-      detail = await res.text()
-    }
-    throw new Error(
-      typeof detail === 'string'
-        ? detail
-        : JSON.stringify(detail, null, 2) ?? res.statusText,
-    )
+  if (res.ok) {
+    return (await res.json()) as T
   }
-  return (await res.json()) as T
+
+  const raw = await res.text()
+  let parsed: unknown = raw
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = raw
+    }
+  }
+
+  const message =
+    typeof parsed === 'string'
+      ? parsed
+      : JSON.stringify(parsed, null, 2) || res.statusText
+
+  throw new Error(message || res.statusText)
 }
 
 export type StockSite = {
