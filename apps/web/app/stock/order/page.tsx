@@ -304,7 +304,8 @@ export default function StockOrderPage() {
 
   const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
   const normalizedStatus = currentStatus?.toLowerCase?.() ?? ''
-  const shouldShowConfirm = normalizedStatus === 'ready'
+  const hasDownloadArtifacts = Boolean(currentDownloadUrl || (currentFiles && currentFiles.length > 0))
+  const shouldShowConfirm = normalizedStatus === 'ready' && hasDownloadArtifacts
 
   const handleConfirm = async () => {
     if (!activeTaskId) return
