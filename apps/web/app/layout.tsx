@@ -1,4 +1,5 @@
 import './globals.css'
+import { AppProviders } from './providers'
 
 export const metadata = {
   title: 'Pixel Flow',
@@ -8,7 +9,9 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   )
 }
