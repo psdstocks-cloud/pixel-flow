@@ -296,6 +296,7 @@ export default function StockOrderPage() {
 
     setBulkSubmitting(true)
     const results: BulkOrderResult[] = []
+    let firstSuccessResponse: StockOrderResponse | null = null
 
     for (const rawUrl of lines) {
       const trimmedUrl = rawUrl.trim()
@@ -331,6 +332,9 @@ export default function StockOrderPage() {
           message: detectionDetails ? `${baseMessage} ${detectionDetails}` : baseMessage,
           taskId: response.taskId,
         })
+        if (!firstSuccessResponse && response.taskId) {
+          firstSuccessResponse = response
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to queue order.'
         results.push({ url: rawUrl, status: 'error', message })
@@ -339,6 +343,13 @@ export default function StockOrderPage() {
 
     setBulkResults(results)
     setBulkSubmitting(false)
+
+    if (firstSuccessResponse) {
+      setLatestResult({ status: 'success', response: firstSuccessResponse })
+      setActiveTaskId(firstSuccessResponse.taskId ?? null)
+      setStatusSnapshot(null)
+      setPollingEnabled(Boolean(firstSuccessResponse.taskId))
+    }
   }
 
   return (
