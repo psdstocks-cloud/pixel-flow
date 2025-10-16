@@ -321,10 +321,14 @@ export default function StockOrderPage() {
           responsetype: bulkResponseType,
           notificationChannel: notification || undefined,
         })
+        const baseMessage = response.message ?? 'Queued.'
+        const detectionDetails = site
+          ? `Detected provider: ${site}${id ? ` • ID ${id}` : ''}`
+          : null
         results.push({
           url: rawUrl,
           status: 'success',
-          message: response.message ?? 'Queued.',
+          message: detectionDetails ? `${baseMessage} ${detectionDetails}` : baseMessage,
           taskId: response.taskId,
         })
       } catch (error) {
