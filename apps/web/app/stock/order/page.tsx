@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Card,
@@ -13,10 +13,12 @@ import {
 import {
   createOrder,
   fetchSites,
+  getOrderStatus,
   queries,
   type StockOrderPayload,
   type StockOrderResponse,
   type StockSite,
+  type StockStatusResponse,
 } from '../../../lib/stock'
 
 type FormValues = {
@@ -42,11 +44,39 @@ const initialFormValues: FormValues = {
   notificationChannel: '',
 }
 
+function isSuccessResult(
+  result: LatestResult,
+): result is { status: 'success'; response: StockOrderResponse } {
+  return Boolean(result && result.status === 'success')
+}
+
+function isErrorResult(result: LatestResult): result is { status: 'error'; message: string } {
+  return Boolean(result && result.status === 'error')
+}
+
+function isValidHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function isValidNotificationChannel(value: string) {
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return isValidHttpUrl(value) || emailPattern.test(value)
+}
+
 function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {}
-  const hasUrl = values.url.trim().length > 0
-  const hasSite = values.site.trim().length > 0
-  const hasId = values.id.trim().length > 0
+  const site = values.site.trim()
+  const id = values.id.trim()
+  const url = values.url.trim()
+  const notification = values.notificationChannel.trim()
+  const hasUrl = url.length > 0
+  const hasSite = site.length > 0
+  const hasId = id.length > 0
 
   if (!hasUrl && !(hasSite && hasId)) {
     const message = 'Provide a direct URL or supply both site and asset ID.'
@@ -58,6 +88,14 @@ function validate(values: FormValues): FormErrors {
     if (hasId && !hasSite) errors.site = 'Select a site when providing an asset ID.'
   }
 
+  if (hasUrl && !isValidHttpUrl(url)) {
+    errors.url = 'Enter a valid URL starting with http:// or https://.'
+  }
+
+  if (notification && !isValidNotificationChannel(notification)) {
+    errors.notificationChannel = 'Provide a valid webhook URL or email address.'
+  }
+
   return errors
 }
 
@@ -65,6 +103,9 @@ export default function StockOrderPage() {
   const [formValues, setFormValues] = useState<FormValues>(initialFormValues)
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [latestResult, setLatestResult] = useState<LatestResult>(null)
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [pollingEnabled, setPollingEnabled] = useState(false)
+  const [statusSnapshot, setStatusSnapshot] = useState<StockStatusResponse | null>(null)
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -81,38 +122,107 @@ export default function StockOrderPage() {
         ? 'Unable to load stock sites.'
         : null
 
+  const orderStatusQuery = useQuery<StockStatusResponse>({
+    queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
+    queryFn: ({ signal }) => {
+      if (!activeTaskId) throw new Error('No task to poll.')
+      return getOrderStatus(activeTaskId, undefined, signal)
+    },
+    enabled: Boolean(activeTaskId) && pollingEnabled,
+    refetchInterval: pollingEnabled ? 5000 : false,
+    refetchOnWindowFocus: false,
+  })
+
+  const statusData = orderStatusQuery.data
+  const statusError =
+    orderStatusQuery.isError && orderStatusQuery.error instanceof Error
+      ? orderStatusQuery.error.message
+      : orderStatusQuery.isError
+        ? 'Unable to refresh order status.'
+        : null
+  const isStatusLoading = pollingEnabled && orderStatusQuery.isLoading
+  const isStatusFetching = orderStatusQuery.isFetching
+
+  useEffect(() => {
+    if (!statusData) return
+    setStatusSnapshot(statusData)
+    const normalized = typeof statusData.status === 'string' ? statusData.status.toLowerCase() : ''
+    const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'canceled', 'error'])
+    if (terminalStatuses.has(normalized)) {
+      setPollingEnabled(false)
+    }
+  }, [statusData])
+
   const createOrderMutation = useMutation({
     mutationFn: async (payload: StockOrderPayload) => createOrder(payload),
     onMutate: () => {
       setLatestResult(null)
+      setActiveTaskId(null)
+      setPollingEnabled(false)
+      setStatusSnapshot(null)
     },
     onSuccess: (data) => {
       setLatestResult({ status: 'success', response: data })
       setFormErrors({})
+      setFormValues(initialFormValues)
+      setActiveTaskId(data.taskId ?? null)
+      setStatusSnapshot(null)
+      setPollingEnabled(Boolean(data.taskId))
     },
     onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to queue the stock order.'
       setLatestResult({ status: 'error', message })
+      setActiveTaskId(null)
+      setPollingEnabled(false)
+      setStatusSnapshot(null)
     },
   })
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const nextErrors = validate(formValues)
+    const trimmedValues: FormValues = {
+      site: formValues.site.trim(),
+      id: formValues.id.trim(),
+      url: formValues.url.trim(),
+      responsetype: formValues.responsetype,
+      notificationChannel: formValues.notificationChannel.trim(),
+    }
+    const nextErrors = validate(trimmedValues)
     setFormErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
 
     const payload: StockOrderPayload = {
-      site: formValues.site || undefined,
-      id: formValues.id || undefined,
-      url: formValues.url || undefined,
-      responsetype: formValues.responsetype,
-      notificationChannel: formValues.notificationChannel || undefined,
+      site: trimmedValues.site || undefined,
+      id: trimmedValues.id || undefined,
+      url: trimmedValues.url || undefined,
+      responsetype: trimmedValues.responsetype,
+      notificationChannel: trimmedValues.notificationChannel || undefined,
     }
 
     createOrderMutation.mutate(payload)
   }
+
+  const latestSuccess = isSuccessResult(latestResult) ? latestResult.response : null
+  const latestError = isErrorResult(latestResult) ? latestResult : null
+
+  const currentStatus = (statusSnapshot?.status ?? latestSuccess?.status ?? 'queued') as string
+  const currentMessage = (() => {
+    if (statusSnapshot && typeof statusSnapshot.message === 'string') return statusSnapshot.message
+    if (latestSuccess && typeof latestSuccess.message === 'string') return latestSuccess.message
+    return undefined
+  })()
+  const currentProgress =
+    statusSnapshot && typeof statusSnapshot.progress === 'number'
+      ? statusSnapshot.progress
+      : undefined
+  const currentDownloadUrl = statusSnapshot?.downloadUrl as string | undefined
+  const queuedAt = latestSuccess?.queuedAt ? new Date(latestSuccess.queuedAt).toLocaleString() : null
+  const lastUpdated = statusSnapshot
+    ? new Date(orderStatusQuery.dataUpdatedAt || Date.now()).toLocaleString()
+    : queuedAt
+
+  const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
 
   return (
     <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
@@ -245,24 +355,104 @@ export default function StockOrderPage() {
           title="Task status"
           description="Monitor progress, download results, and review recent activity."
         >
-          {latestResult?.status === 'success' ? (
+          {latestError ? (
+            <Toast title="Could not queue order" message={latestError.message} variant="error" />
+          ) : showStatusPanel ? (
             <div style={{ display: 'grid', gap: 16 }}>
-              <StatusBadge status={latestResult.response.status ?? 'queued'} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <StatusBadge status={currentStatus ?? 'queued'} />
+                  <div>
+                    <strong>Task ID:</strong> {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
+                  </div>
+                </div>
+                {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
+                {typeof currentProgress === 'number' ? (
+                  <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
+                ) : null}
+                {currentDownloadUrl ? (
+                  <a
+                    href={currentDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#0ea5e9', fontWeight: 600 }}
+                  >
+                    Download latest files
+                  </a>
+                ) : null}
+                {lastUpdated ? (
+                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                    Last update: {lastUpdated}
+                  </p>
+                ) : null}
+              </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {pollingEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => setPollingEnabled(false)}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                  >
+                    Pause polling
+                  </button>
+                ) : null}
+                {activeTaskId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!activeTaskId) return
+                      if (!pollingEnabled) {
+                        setPollingEnabled(true)
+                      }
+                      orderStatusQuery.refetch()
+                    }}
+                    disabled={isStatusFetching}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: '1px solid #0ea5e9',
+                      background: '#e0f2fe',
+                      color: '#0369a1',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
+                  </button>
+                ) : null}
+              </div>
+              {isStatusLoading ? (
+                <Toast
+                  title="Refreshing status"
+                  message="Polling the task for updates."
+                  variant="info"
+                />
+              ) : null}
+              {!pollingEnabled && activeTaskId ? (
+                <Toast
+                  title="Polling paused"
+                  message="Automatic updates are paused after reaching a final state. Use refresh to check again."
+                  variant="info"
+                />
+              ) : null}
+              {statusError ? (
+                <Toast title="Status unavailable" message={statusError} variant="error" />
+              ) : null}
+            </div>
+          ) : latestSuccess ? (
+            <div style={{ display: 'grid', gap: 16 }}>
+              <StatusBadge status={latestSuccess.status ?? 'queued'} />
               <div>
                 <strong>Task ID:</strong>{' '}
-                {latestResult.response.taskId ?? 'Awaiting identifier'}
+                {latestSuccess.taskId ?? 'Awaiting identifier'}
               </div>
-              {latestResult.response.message ? (
-                <p style={{ margin: 0 }}>{latestResult.response.message}</p>
+              {latestSuccess.message ? (
+                <p style={{ margin: 0 }}>{latestSuccess.message}</p>
               ) : null}
-              <Toast
-                title="Order queued"
-                message="Status polling will be added in the next step."
-                variant="success"
-              />
+              {queuedAt ? (
+                <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>Queued at: {queuedAt}</p>
+              ) : null}
+              <Toast title="Order queued" message="Waiting for the first status update." variant="success" />
             </div>
-          ) : latestResult?.status === 'error' ? (
-            <Toast title="Could not queue order" message={latestResult.message} variant="error" />
           ) : (
             <p style={{ color: '#94a3b8', margin: 0 }}>
               Submit an order to see its status here.
