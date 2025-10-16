@@ -364,8 +364,9 @@ export default function StockOrderPage() {
           description="Submit a stock order for a single asset."
         >
           <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
-            <Field label="Provider" hint="Select a stock provider.">
+            <Field label="Provider" hint="Select a stock provider." htmlFor="stock-provider">
               <select
+                id="stock-provider"
                 value={formValues.site}
                 onChange={(event) =>
                   setFormValues((prev) => ({ ...prev, site: event.target.value }))
@@ -382,8 +383,9 @@ export default function StockOrderPage() {
               </select>
             </Field>
 
-            <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789).">
+            <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789)." htmlFor="stock-asset-id">
               <input
+                id="stock-asset-id"
                 value={formValues.id}
                 onChange={(event) =>
                   setFormValues((prev) => ({ ...prev, id: event.target.value }))
@@ -397,8 +399,10 @@ export default function StockOrderPage() {
               label="Direct URL"
               hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
               error={formErrors.url}
+              htmlFor="stock-direct-url"
             >
               <input
+                id="stock-direct-url"
                 value={formValues.url}
                 onChange={(event) =>
                   setFormValues((prev) => ({ ...prev, url: event.target.value }))
@@ -408,8 +412,9 @@ export default function StockOrderPage() {
               />
             </Field>
 
-            <Field label="Response type">
+            <Field label="Response type" htmlFor="stock-response-type">
               <select
+                id="stock-response-type"
                 value={formValues.responsetype}
                 onChange={(event) =>
                   setFormValues((prev) => ({
@@ -429,8 +434,10 @@ export default function StockOrderPage() {
             <Field
               label="Notification channel"
               hint="Optional webhook or email for completion updates."
+              htmlFor="stock-notification-channel"
             >
               <input
+                id="stock-notification-channel"
                 value={formValues.notificationChannel}
                 onChange={(event) =>
                   setFormValues((prev) => ({
@@ -584,8 +591,9 @@ export default function StockOrderPage() {
           description="Submit multiple asset URLs at once. We’ll auto-detect supported providers when possible."
         >
           <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 16 }}>
-            <Field label="Asset URLs" hint="Enter one URL per line.">
+            <Field label="Asset URLs" hint="Enter one URL per line." htmlFor="stock-bulk-urls">
               <textarea
+                id="stock-bulk-urls"
                 value={bulkInput}
                 onChange={(event) => setBulkInput(event.target.value)}
                 rows={6}
@@ -595,8 +603,9 @@ export default function StockOrderPage() {
             </Field>
 
             <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-              <Field label="Response type">
+              <Field label="Response type" htmlFor="stock-bulk-response-type">
                 <select
+                  id="stock-bulk-response-type"
                   value={bulkResponseType}
                   onChange={(event) =>
                     setBulkResponseType(event.target.value as FormValues['responsetype'])
@@ -610,8 +619,9 @@ export default function StockOrderPage() {
                 </select>
               </Field>
 
-              <Field label="Notification channel" hint="Optional email or webhook for all queued tasks.">
+              <Field label="Notification channel" hint="Optional email or webhook for all queued tasks." htmlFor="stock-bulk-notification">
                 <input
+                  id="stock-bulk-notification"
                   value={bulkNotificationChannel}
                   onChange={(event) => setBulkNotificationChannel(event.target.value)}
                   placeholder="https://hooks.slack.com/... or email@example.com"
