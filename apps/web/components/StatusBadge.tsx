@@ -3,10 +3,16 @@ type StatusBadgeProps = {
   }
   
   const statusStyles: Record<string, { background: string; color: string }> = {
+    ready: { background: '#dbeafe', color: '#1d4ed8' },
+    queued: { background: '#fef3c7', color: '#92400e' },
     pending: { background: '#fef3c7', color: '#92400e' },
     running: { background: '#dbeafe', color: '#1d4ed8' },
+    processing: { background: '#dbeafe', color: '#1d4ed8' },
     completed: { background: '#dcfce7', color: '#166534' },
     failed: { background: '#fee2e2', color: '#b91c1c' },
+    error: { background: '#fee2e2', color: '#b91c1c' },
+    cancelled: { background: '#e2e8f0', color: '#1e293b' },
+    canceled: { background: '#e2e8f0', color: '#1e293b' },
     default: { background: '#e2e8f0', color: '#1e293b' },
   }
   

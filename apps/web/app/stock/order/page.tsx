@@ -291,6 +291,11 @@ export default function StockOrderPage() {
       ? statusSnapshot.progress
       : undefined
   const currentDownloadUrl = statusSnapshot?.downloadUrl as string | undefined
+  const currentFiles = Array.isArray(statusSnapshot?.files)
+    ? (statusSnapshot?.files as StockStatusResponse['files'])
+    : Array.isArray(latestSuccess?.files)
+      ? (latestSuccess?.files as StockStatusResponse['files'])
+      : undefined
   const queuedAt = latestSuccess?.queuedAt ? new Date(latestSuccess.queuedAt).toLocaleString() : null
   const lastUpdated = statusSnapshot
     ? new Date(orderStatusQuery.dataUpdatedAt || Date.now()).toLocaleString()
@@ -543,6 +548,26 @@ export default function StockOrderPage() {
                   >
                     Download latest files
                   </a>
+                ) : null}
+                {!currentDownloadUrl && currentFiles?.length ? (
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#1e293b', fontSize: 13 }}>
+                    {currentFiles.map((file) => (
+                      <li key={`${file?.name ?? file?.url ?? 'file'}-${file?.url ?? 'unknown'}`} style={{ marginBottom: 4 }}>
+                        {file?.url ? (
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#0ea5e9', fontWeight: 600 }}
+                          >
+                            {file?.name ?? file.url}
+                          </a>
+                        ) : (
+                          <span>{file?.name ?? 'Download available soon'}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
                 {lastUpdated ? (
                   <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
