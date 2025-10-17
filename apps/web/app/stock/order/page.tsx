@@ -1,15 +1,9 @@
 'use client'
 
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import {
-  Card,
-  Field,
-  SectionHeader,
-  StatusBadge,
-  Toast,
-} from '../../../components'
+import { Field, StatusBadge, Toast } from '../../../components'
 import {
   confirmOrder,
   createOrder,
@@ -306,6 +300,69 @@ export default function StockOrderPage() {
   const normalizedStatus = currentStatus?.toLowerCase?.() ?? ''
   const hasDownloadArtifacts = Boolean(currentDownloadUrl || (currentFiles && currentFiles.length > 0))
   const shouldShowConfirm = normalizedStatus === 'ready' && hasDownloadArtifacts
+  const activeSites = sites.filter((site) => site.active !== false)
+  const totalSites = sites.length
+  const successfulBulkCount = bulkResults.filter((result) => result.status === 'success').length
+  const supportedSiteNames = sites.slice(0, 14).map((site) => site.displayName ?? site.site)
+
+  const panelBaseStyle: CSSProperties = {
+    background: 'rgba(15, 23, 42, 0.45)',
+    borderRadius: 32,
+    border: '1px solid rgba(255, 255, 255, 0.18)',
+    padding: '36px clamp(24px, 3vw, 48px)',
+    backdropFilter: 'blur(28px)',
+    boxShadow: '0 40px 80px rgba(15, 23, 42, 0.35)',
+    color: '#f8fafc',
+  }
+
+  const inputSurfaceStyle: CSSProperties = {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: 18,
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    background: 'rgba(15, 23, 42, 0.35)',
+    color: '#f8fafc',
+  }
+
+  const chipStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '8px 14px',
+    borderRadius: 999,
+    border: '1px solid rgba(255, 255, 255, 0.18)',
+    background: 'rgba(148, 163, 184, 0.16)',
+    color: '#f8fafc',
+    fontSize: 13,
+  }
+
+  const primaryButtonStyle: CSSProperties = {
+    width: '100%',
+    padding: '16px 20px',
+    borderRadius: 22,
+    border: '1px solid transparent',
+    background: 'linear-gradient(135deg, #38bdf8, #6366f1)',
+    color: '#f8fafc',
+    fontWeight: 600,
+    fontSize: 16,
+    cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
+    boxShadow: '0 24px 45px rgba(99, 102, 241, 0.28)',
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+  }
+
+  const headlineStats = [
+    {
+      label: 'Active providers',
+      value: activeSites.length || totalSites || '—',
+    },
+    {
+      label: 'Bulk successes',
+      value: successfulBulkCount,
+    },
+    {
+      label: 'Live task state',
+      value: normalizedStatus ? normalizedStatus.toUpperCase() : '—',
+    },
+  ]
 
   const handleConfirm = async () => {
     if (!activeTaskId) return
@@ -409,432 +466,540 @@ export default function StockOrderPage() {
           : firstSuccessResponse
       setLatestResult({ status: 'success', response })
       setActiveTaskId(normalizedTaskId)
-      setStatusSnapshot(null)
-      setPollingEnabled(Boolean(normalizedTaskId))
     }
   }
 
   return (
-    <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
-      <SectionHeader
-        title="Stock Order"
-        subtitle="Queue and track stock asset downloads across your connected providers."
+    <main
+      style={{
+        position: 'relative',
+        minHeight: '100vh',
+        padding: '88px clamp(24px, 6vw, 120px)',
+        background:
+          'radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.22), transparent 55%), radial-gradient(circle at 85% 15%, rgba(129, 140, 248, 0.25), transparent 45%), linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: '-200px auto auto -160px',
+          width: 420,
+          height: 420,
+          background: 'rgba(94, 234, 212, 0.25)',
+          filter: 'blur(160px)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }}
       />
-      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
-        <Card
-          title="Order stock"
-          description="Submit a stock order for a single asset."
-        >
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
-            <Field label="Provider" hint="Select a stock provider." htmlFor="stock-provider">
-              <select
-                id="stock-provider"
-                value={formValues.site}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, site: event.target.value }))
-                }
-                disabled={sitesLoading}
-                style={{ width: '100%', padding: '10px 12px' }}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 'auto -120px -220px auto',
+          width: 520,
+          height: 520,
+          background: 'rgba(129, 140, 248, 0.3)',
+          filter: 'blur(200px)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1240, margin: '0 auto', display: 'grid', gap: 40 }}>
+        <header style={{ display: 'grid', gap: 20 }}>
+          <div
+            style={{
+              alignSelf: 'start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 18px',
+              borderRadius: 999,
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.18)',
+              backdropFilter: 'blur(18px)',
+              fontSize: 14,
+              color: 'rgba(226, 232, 255, 0.85)',
+              fontWeight: 500,
+            }}
+          >
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#38bdf8', display: 'inline-block' }} />
+            Connected to NEHTW stock network
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'space-between' }}>
+            <div style={{ maxWidth: 620 }}>
+              <h1
+                style={{
+                  fontSize: 'clamp(32px, 4vw, 54px)',
+                  lineHeight: 1.1,
+                  fontWeight: 700,
+                  color: '#f8fafc',
+                  margin: 0,
+                }}
               >
-                <option value="">Select a provider</option>
-                {sites.map((site) => (
-                  <option key={site.site} value={site.site}>
-                    {site.displayName ?? site.site}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789)." htmlFor="stock-asset-id">
-              <input
-                id="stock-asset-id"
-                value={formValues.id}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, id: event.target.value }))
-                }
-                placeholder="e.g. 123456789"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-            </Field>
-
-            <Field
-              label="Direct URL"
-              hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
-              error={formErrors.url}
-              htmlFor="stock-direct-url"
-            >
-              <input
-                id="stock-direct-url"
-                value={formValues.url}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, url: event.target.value }))
-                }
-                placeholder="https://example.com/asset"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-            </Field>
-
-            <Field label="Response type" htmlFor="stock-response-type">
-              <select
-                id="stock-response-type"
-                value={formValues.responsetype}
-                onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    responsetype: event.target.value as FormValues['responsetype'],
-                  }))
-                }
-                style={{ width: '100%', padding: '10px 12px' }}
-              >
-                <option value="any">Any (auto)</option>
-                <option value="gdrive">Google Drive</option>
-                <option value="asia">Asia CDN</option>
-                <option value="mydrivelink">My Drive Link</option>
-              </select>
-            </Field>
-
-            <Field
-              label="Notification channel"
-              hint="Optional webhook or email for completion updates."
-              htmlFor="stock-notification-channel"
-            >
-              <input
-                id="stock-notification-channel"
-                value={formValues.notificationChannel}
-                onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    notificationChannel: event.target.value,
-                  }))
-                }
-                placeholder="https://hooks.slack.com/... or email@example.com"
-                style={{ width: '100%', padding: '10px 12px' }}
-              />
-            </Field>
-
-            <button
-              className="primary"
-              type="submit"
-              disabled={createOrderMutation.isPending}
+                Download any stock asset in a single, fluid workflow.
+              </h1>
+              <p style={{ color: 'rgba(226, 232, 255, 0.78)', margin: '12px 0 0', fontSize: 'clamp(16px, 2vw, 18px)' }}>
+                Queue assets from 40+ providers, confirm delivery, and monitor progress in real-time with a glassmorphism experience crafted for 2025.
+              </p>
+            </div>
+            <div
               style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: '#0ea5e9',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                minWidth: 260,
               }}
             >
-              {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
-            </button>
-            {sitesLoading ? (
-              <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
-            ) : null}
-            {sitesError ? (
-              <Toast title="Could not load providers" message={sitesError} variant="error" />
-            ) : null}
-          </form>
-        </Card>
-
-        <Card
-          title="Task status"
-          description="Monitor progress, download results, and review recent activity."
-        >
-          {latestError ? (
-            <Toast title="Could not queue order" message={latestError.message} variant="error" />
-          ) : showStatusPanel ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <StatusBadge status={currentStatus ?? 'queued'} />
-                  <div>
-                    <strong>Task ID:</strong> {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
-                  </div>
-                </div>
-                {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
-                {typeof currentProgress === 'number' ? (
-                  <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
-                ) : null}
-                {currentDownloadUrl ? (
-                  <a
-                    href={currentDownloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#0ea5e9', fontWeight: 600 }}
-                  >
-                    Download latest files
-                  </a>
-                ) : null}
-                {!currentDownloadUrl && currentFiles?.length ? (
-                  <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#1e293b', fontSize: 13 }}>
-                    {currentFiles.map((file) => (
-                      <li key={`${file?.name ?? file?.url ?? 'file'}-${file?.url ?? 'unknown'}`} style={{ marginBottom: 4 }}>
-                        {file?.url ? (
-                          <a
-                            href={file.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#0ea5e9', fontWeight: 600 }}
-                          >
-                            {file?.name ?? file.url}
-                          </a>
-                        ) : (
-                          <span>{file?.name ?? 'Download available soon'}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {lastUpdated ? (
-                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-                    Last update: {lastUpdated}
-                  </p>
-                ) : null}
-              </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                {shouldShowConfirm && activeTaskId ? (
-                  <button
-                    type="button"
-                    onClick={handleConfirm}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #0ea5e9',
-                      background: '#0ea5e9',
-                      color: '#ffffff',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Confirm download
-                  </button>
-                ) : null}
-                {pollingEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => setPollingEnabled(false)}
-                    style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
-                  >
-                    Pause polling
-                  </button>
-                ) : null}
-                {activeTaskId ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!activeTaskId) return
-                      if (!pollingEnabled) {
-                        setPollingEnabled(true)
-                      }
-                      orderStatusQuery.refetch()
-                    }}
-                    disabled={isStatusFetching}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #0ea5e9',
-                      background: '#e0f2fe',
-                      color: '#0369a1',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
-                  </button>
-                ) : null}
-              </div>
-              {isStatusLoading ? (
-                <Toast
-                  title="Refreshing status"
-                  message="Polling the task for updates."
-                  variant="info"
-                />
-              ) : null}
-              {!pollingEnabled && activeTaskId ? (
-                <Toast
-                  title="Polling paused"
-                  message="Automatic updates are paused after reaching a final state. Use refresh to check again."
-                  variant="info"
-                />
-              ) : null}
-              {statusError ? (
-                <Toast title="Status unavailable" message={statusError} variant="error" />
-              ) : null}
-            </div>
-          ) : latestSuccess ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <StatusBadge status={latestSuccess.status ?? 'queued'} />
-              <div>
-                <strong>Task ID:</strong>{' '}
-                {latestSuccess.taskId ?? 'Awaiting identifier'}
-              </div>
-              {latestSuccess.message ? (
-                <p style={{ margin: 0 }}>{latestSuccess.message}</p>
-              ) : null}
-              {queuedAt ? (
-                <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>Queued at: {queuedAt}</p>
-              ) : null}
-              <Toast title="Order queued" message="Waiting for the first status update." variant="success" />
-            </div>
-          ) : (
-            <p style={{ color: '#94a3b8', margin: 0 }}>
-              Submit an order to see its status here.
-            </p>
-          )}
-        </Card>
-      </div>
-
-      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
-        <Card
-          title="Bulk queue"
-          description="Submit multiple asset URLs at once. We’ll auto-detect supported providers when possible."
-        >
-          <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 16 }}>
-            <Field label="Asset URLs" hint="Enter one URL per line." htmlFor="stock-bulk-urls">
-              <textarea
-                id="stock-bulk-urls"
-                value={bulkInput}
-                onChange={(event) => setBulkInput(event.target.value)}
-                rows={6}
-                placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
-                style={{ width: '100%', padding: '10px 12px', resize: 'vertical' }}
-              />
-            </Field>
-
-            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-              <Field label="Response type" htmlFor="stock-bulk-response-type">
-                <select
-                  id="stock-bulk-response-type"
-                  value={bulkResponseType}
-                  onChange={(event) =>
-                    setBulkResponseType(event.target.value as FormValues['responsetype'])
-                  }
-                  style={{ width: '100%', padding: '10px 12px' }}
-                >
-                  <option value="any">Any (auto)</option>
-                  <option value="gdrive">Google Drive</option>
-                  <option value="asia">Asia CDN</option>
-                  <option value="mydrivelink">My Drive Link</option>
-                </select>
-              </Field>
-
-              <Field label="Notification channel" hint="Optional email or webhook for all queued tasks." htmlFor="stock-bulk-notification">
-                <input
-                  id="stock-bulk-notification"
-                  value={bulkNotificationChannel}
-                  onChange={(event) => setBulkNotificationChannel(event.target.value)}
-                  placeholder="https://hooks.slack.com/... or email@example.com"
-                  style={{ width: '100%', padding: '10px 12px' }}
-                />
-              </Field>
-            </div>
-
-            <button
-              type="submit"
-              disabled={bulkSubmitting}
-              style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: '#0f766e',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: bulkSubmitting ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
-            </button>
-          </form>
-
-          {bulkResults.length > 0 ? (
-            <div style={{ marginTop: 18, display: 'grid', gap: 12 }}>
-              {bulkResults.map((result) => (
+              {headlineStats.map((stat) => (
                 <div
-                  key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
+                  key={stat.label}
                   style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 10,
-                    padding: 12,
-                    background: result.status === 'success' ? '#ecfdf5' : '#fef2f2',
-                    color: result.status === 'success' ? '#065f46' : '#991b1b',
-                    display: 'grid',
-                    gap: 6,
+                    background: 'rgba(15, 23, 42, 0.38)',
+                    borderRadius: 24,
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    padding: '16px 20px',
+                    textAlign: 'left',
+                    color: '#f8fafc',
+                    backdropFilter: 'blur(22px)',
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <StatusBadge status={result.status === 'success' ? 'completed' : 'error'} />
-                    <span style={{ fontWeight: 600 }}>{result.url}</span>
-                  </div>
-                  <span>{result.message}</span>
-                  {result.taskId ? (
-                    <span style={{ fontSize: 13 }}>Task ID: {result.taskId}</span>
-                  ) : null}
+                  <div style={{ fontSize: 15, color: 'rgba(226, 232, 255, 0.68)' }}>{stat.label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>{stat.value}</div>
                 </div>
               ))}
             </div>
-          ) : null}
-        </Card>
+          </div>
+        </header>
 
-        <Card
-          title="Provider pricing"
-          description="Live availability and point cost per provider."
+        <div
+          style={{
+            display: 'grid',
+            gap: 32,
+            gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 0.9fr)',
+            alignItems: 'start',
+          }}
         >
-          {sitesLoading ? (
-            <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
-          ) : sitesError ? (
-            <Toast title="Unavailable" message={sitesError} variant="error" />
-          ) : sites.length === 0 ? (
-            <p style={{ margin: 0, color: '#94a3b8' }}>No providers are currently configured.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {sites.map((site) => {
-                const priceDisplay =
-                  site.price != null
-                    ? `${site.price}${site.currency ? ` ${site.currency}` : ''}`
-                    : '—'
+          <section style={panelBaseStyle}>
+            <div style={{ display: 'grid', gap: 20 }}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 'clamp(26px, 3vw, 32px)', fontWeight: 700 }}>Instant download order</h2>
+                <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.75)' }}>
+                  Paste a stock URL or provide provider credentials. We detect the best route and queue instantly.
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 20 }}>
+                <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                  <Field label="Provider" hint="Select a stock provider." htmlFor="stock-provider">
+                    <select
+                      id="stock-provider"
+                      value={formValues.site}
+                      onChange={(event) =>
+                        setFormValues((prev) => ({ ...prev, site: event.target.value }))
+                      }
+                      disabled={sitesLoading}
+                      style={inputSurfaceStyle}
+                    >
+                      <option value="">Auto-detect provider</option>
+                      {sites.map((site) => (
+                        <option key={site.site} value={site.site}>
+                          {site.displayName ?? site.site}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Asset ID" hint="Used when the provider requires a unique identifier." htmlFor="stock-asset-id">
+                    <input
+                      id="stock-asset-id"
+                      value={formValues.id}
+                      onChange={(event) =>
+                        setFormValues((prev) => ({ ...prev, id: event.target.value }))
+                      }
+                      placeholder="e.g. 123456789"
+                      style={inputSurfaceStyle}
+                    />
+                  </Field>
+                </div>
+
+                <Field
+                  label="Direct URL"
+                  hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
+                  error={formErrors.url}
+                  htmlFor="stock-direct-url"
+                >
+                  <input
+                    id="stock-direct-url"
+                    value={formValues.url}
+                    onChange={(event) =>
+                      setFormValues((prev) => ({ ...prev, url: event.target.value }))
+                    }
+                    placeholder="https://example.com/asset"
+                    style={inputSurfaceStyle}
+                  />
+                </Field>
+
+                <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                  <Field label="Response type" htmlFor="stock-response-type">
+                    <select
+                      id="stock-response-type"
+                      value={formValues.responsetype}
+                      onChange={(event) =>
+                        setFormValues((prev) => ({
+                          ...prev,
+                          responsetype: event.target.value as FormValues['responsetype'],
+                        }))
+                      }
+                      style={inputSurfaceStyle}
+                    >
+                      <option value="any">Any (auto)</option>
+                      <option value="gdrive">Google Drive</option>
+                      <option value="asia">Asia CDN</option>
+                      <option value="mydrivelink">My Drive Link</option>
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Notification channel"
+                    hint="Optional webhook or email for completion updates."
+                    htmlFor="stock-notification-channel"
+                  >
+                    <input
+                      id="stock-notification-channel"
+                      value={formValues.notificationChannel}
+                      onChange={(event) =>
+                        setFormValues((prev) => ({
+                          ...prev,
+                          notificationChannel: event.target.value,
+                        }))
+                      }
+                      placeholder="https://hooks.slack.com/... or email@example.com"
+                      style={inputSurfaceStyle}
+                    />
+                  </Field>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={createOrderMutation.isPending}
+                  style={{
+                    ...primaryButtonStyle,
+                    cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
+                    opacity: createOrderMutation.isPending ? 0.7 : 1,
+                  }}
+                >
+                  {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
+                </button>
+
+                {sitesLoading ? (
+                  <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
+                ) : null}
+                {sitesError ? (
+                  <Toast title="Could not load providers" message={sitesError} variant="error" />
+                ) : null}
+              </form>
+
+              {supportedSiteNames.length ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.62)', textTransform: 'uppercase', letterSpacing: 1 }}>Popular providers</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {supportedSiteNames.map((name) => (
+                      <span key={name} style={chipStyle}>
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={{ ...panelBaseStyle, padding: '32px clamp(22px, 3vw, 44px)', display: 'grid', gap: 24 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(24px, 2.5vw, 30px)', fontWeight: 700 }}>Task timeline</h2>
+              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
+                Follow the lifecycle of your most recent order. Status and downloads update automatically while polling is active.
+              </p>
+            </div>
+
+            {latestError ? (
+              <Toast title="Could not queue order" message={latestError.message} variant="error" />
+            ) : showStatusPanel ? (
+              <div style={{ display: 'grid', gap: 18 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <StatusBadge status={currentStatus ?? 'queued'} />
+                    <div style={{ fontWeight: 600 }}>
+                      Task ID: {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
+                    </div>
+                  </div>
+                  {currentMessage ? (
+                    <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.8)' }}>{currentMessage}</p>
+                  ) : null}
+                  {typeof currentProgress === 'number' ? (
+                    <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.8)' }}>Progress: {Math.round(currentProgress)}%</p>
+                  ) : null}
+                  {currentDownloadUrl ? (
+                    <a
+                      href={currentDownloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#38bdf8', fontWeight: 600 }}
+                    >
+                      Download latest files
+                    </a>
+                  ) : null}
+                  {!currentDownloadUrl && currentFiles?.length ? (
+                    <ul style={{ margin: 0, paddingLeft: 20, color: 'rgba(226, 232, 255, 0.8)', fontSize: 13 }}>
+                      {currentFiles.map((file) => (
+                        <li key={`${file?.name ?? file?.url ?? 'file'}-${file?.url ?? 'unknown'}`} style={{ marginBottom: 6 }}>
+                          {file?.url ? (
+                            <a
+                              href={file.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#38bdf8', fontWeight: 600 }}
+                            >
+                              {file?.name ?? file.url}
+                            </a>
+                          ) : (
+                            <span>{file?.name ?? 'Download available soon'}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {lastUpdated ? (
+                    <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.62)', fontSize: 13 }}>
+                      Last update: {lastUpdated}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {shouldShowConfirm && activeTaskId ? (
+                    <button
+                      type="button"
+                      onClick={handleConfirm}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 16,
+                        border: '1px solid rgba(148, 163, 184, 0.35)',
+                        background: 'rgba(56, 189, 248, 0.18)',
+                        color: '#f8fafc',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Confirm download
+                    </button>
+                  ) : null}
+                  {pollingEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => setPollingEnabled(false)}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 16,
+                        border: '1px solid rgba(148, 163, 184, 0.25)',
+                        background: 'rgba(15, 23, 42, 0.4)',
+                        color: '#e2e8f0',
+                      }}
+                    >
+                      Pause polling
+                    </button>
+                  ) : null}
+                  {activeTaskId ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!activeTaskId) return
+                        if (!pollingEnabled) {
+                          setPollingEnabled(true)
+                        }
+                        orderStatusQuery.refetch()
+                      }}
+                      disabled={isStatusFetching}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 16,
+                        border: '1px solid rgba(148, 163, 184, 0.25)',
+                        background: 'rgba(56, 189, 248, 0.22)',
+                        color: '#0ea5e9',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
+                    </button>
+                  ) : null}
+                </div>
+
+                {isStatusLoading ? (
+                  <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
+                ) : null}
+                {!pollingEnabled && activeTaskId ? (
+                  <Toast
+                    title="Polling paused"
+                    message="Polling resumes automatically when you refresh."
+                    variant="info"
+                  />
+                ) : null}
+                {statusError ? (
+                  <Toast title="Status update failed" message={statusError} variant="error" />
+                ) : null}
+              </div>
+            ) : (
+              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
+                Queue an order to start tracking its progress here.
+              </p>
+            )}
+          </section>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gap: 32,
+            gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)',
+          }}
+        >
+          <section style={{ ...panelBaseStyle, padding: '32px clamp(22px, 3vw, 44px)', display: 'grid', gap: 24 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(24px, 2.5vw, 30px)', fontWeight: 700 }}>Bulk queue</h2>
+              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
+                Paste multiple URLs and we will auto-detect supported providers whenever possible.
+              </p>
+            </div>
+
+            <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 20 }}>
+              <Field label="Asset URLs" hint="Enter one URL per line." htmlFor="stock-bulk-urls">
+                <textarea
+                  id="stock-bulk-urls"
+                  value={bulkInput}
+                  onChange={(event) => setBulkInput(event.target.value)}
+                  rows={6}
+                  placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
+                  style={{ ...inputSurfaceStyle, minHeight: 168, resize: 'vertical' }}
+                />
+              </Field>
+
+              <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                <Field label="Response type" htmlFor="stock-bulk-response-type">
+                  <select
+                    id="stock-bulk-response-type"
+                    value={bulkResponseType}
+                    onChange={(event) =>
+                      setBulkResponseType(event.target.value as FormValues['responsetype'])
+                    }
+                    style={inputSurfaceStyle}
+                  >
+                    <option value="any">Any (auto)</option>
+                    <option value="gdrive">Google Drive</option>
+                    <option value="asia">Asia CDN</option>
+                    <option value="mydrivelink">My Drive Link</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="Notification channel"
+                  hint="Optional email or webhook for all queued tasks."
+                  htmlFor="stock-bulk-notification"
+                >
+                  <input
+                    id="stock-bulk-notification"
+                    value={bulkNotificationChannel}
+                    onChange={(event) => setBulkNotificationChannel(event.target.value)}
+                    placeholder="https://hooks.slack.com/... or email@example.com"
+                    style={inputSurfaceStyle}
+                  />
+                </Field>
+              </div>
+
+              <button
+                type="submit"
+                disabled={bulkSubmitting}
+                style={{
+                  ...primaryButtonStyle,
+                  cursor: bulkSubmitting ? 'not-allowed' : 'pointer',
+                  opacity: bulkSubmitting ? 0.7 : 1,
+                }}
+              >
+                {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
+              </button>
+            </form>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              {bulkResults.map((result) => (
+                <div
+                  key={`${result.url}-${result.status}-${result.message}`}
+                  style={{
+                    padding: '14px 18px',
+                    borderRadius: 18,
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    background: result.status === 'success' ? 'rgba(22, 163, 74, 0.16)' : 'rgba(239, 68, 68, 0.18)',
+                    color: result.status === 'success' ? '#bbf7d0' : '#fecaca',
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{result.url}</div>
+                  <div style={{ fontSize: 14 }}>{result.message}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ ...panelBaseStyle, padding: '32px clamp(22px, 3vw, 44px)', display: 'grid', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 'clamp(24px, 2.5vw, 30px)', fontWeight: 700 }}>Provider insights</h2>
+              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
+                Stay informed about availability and points cost across the network.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              {sites.map((provider) => {
+                const price = provider.price ?? provider.minPrice ?? null
+                const priceDisplay = price != null ? `${price}${provider.currency ? ` ${provider.currency}` : ''}` : '—'
                 return (
                   <div
-                    key={site.site}
+                    key={provider.site}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '8px 12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 10,
-                      background: '#fff',
+                      padding: '12px 16px',
+                      borderRadius: 18,
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      background: 'rgba(15, 23, 42, 0.35)',
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 600 }}>{site.displayName ?? site.site}</span>
-                      <span style={{ fontSize: 13, color: '#64748b' }}>{site.site}</span>
+                      <span style={{ fontWeight: 600 }}>{provider.displayName ?? provider.site}</span>
+                      <span style={{ fontSize: 13, color: 'rgba(226, 232, 255, 0.68)' }}>{provider.site}</span>
                     </div>
                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <span
                         style={{
-                          display: 'inline-block',
-                          padding: '4px 10px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '6px 12px',
                           borderRadius: 999,
-                          background: site.active === false ? '#fee2e2' : '#f1f5f9',
-                          color: site.active === false ? '#b91c1c' : '#0f172a',
+                          background: provider.active === false ? 'rgba(239, 68, 68, 0.22)' : 'rgba(34, 197, 94, 0.22)',
+                          color: provider.active === false ? '#fee2e2' : '#bbf7d0',
                           fontWeight: 600,
                         }}
                       >
-                        {site.active === false ? 'Offline' : 'Online'}
+                        {provider.active === false ? 'Offline' : 'Online'}
                       </span>
-                      <span style={{ fontSize: 13 }}>Price: {priceDisplay}</span>
-                      {site.minPrice != null ? (
-                        <span style={{ fontSize: 12, color: '#64748b' }}>
-                          Min price: {site.minPrice}
-                          {site.currency ? ` ${site.currency}` : ''}
-                        </span>
-                      ) : null}
+                      <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.8)' }}>Price: {priceDisplay}</span>
                     </div>
                   </div>
                 )
               })}
             </div>
-          )}
-        </Card>
+          </section>
+        </div>
       </div>
     </main>
   )
