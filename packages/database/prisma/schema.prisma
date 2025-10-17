@@ -15,3 +15,49 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model UserBalance {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  points    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StockOrderBatch {
+  id          String           @id @default(cuid())
+  userId      String
+  status      String           @default("draft")
+  totalPoints Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  tasks       StockOrderTask[]
+
+  @@index([userId])
+}
+
+model StockOrderTask {
+  id             String           @id @default(cuid())
+  userId         String
+  batchId        String?
+  sourceUrl      String
+  site           String?
+  assetId        String?
+  title          String?
+  previewUrl     String?
+  thumbnailUrl   String?
+  costPoints     Int?
+  costCurrency   String?
+  costAmount     Float?
+  status         String           @default("draft")
+  externalTaskId String?          @unique
+  latestMessage  String?
+  downloadUrl    String?
+  responsetype   String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  batch          StockOrderBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([batchId])
+}

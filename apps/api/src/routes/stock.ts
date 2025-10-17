@@ -1,6 +1,7 @@
 import express from 'express'
 import { Readable } from 'stream'
 import { z } from 'zod'
+import prisma from '../db'
 
 const router = express.Router()
 
@@ -28,6 +29,8 @@ const DEFAULT_HEADERS: Record<string, string> = {
   Accept: 'application/json, */*;q=0.8',
 }
 
+const MAX_BULK_ITEMS = 5
+
 function withApiKey(headers: Record<string, string> = {}): Record<string, string> {
   return {
     ...DEFAULT_HEADERS,
@@ -44,6 +47,223 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
     }
   }
   return url.toString()
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function safeString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+  return undefined
+}
+
+function determineCostPoints(info: Record<string, unknown>): number | null {
+  const candidates = [info.points, info.cost, info.price]
+  for (const candidate of candidates) {
+    const numeric = toNumber(candidate)
+    if (numeric !== null) return Math.max(Math.ceil(numeric), 0)
+  }
+  return null
+}
+
+function determineCostAmount(info: Record<string, unknown>): number | null {
+  const candidates = [info.cost, info.price]
+  for (const candidate of candidates) {
+    const numeric = toNumber(candidate)
+    if (numeric !== null) return numeric
+  }
+  return null
+}
+
+function determineCurrency(info: Record<string, unknown>): string | undefined {
+  return safeString(info.currency) || safeString(info.currencyCode)
+}
+
+function pickPreviewUrl(info: Record<string, unknown>): string | undefined {
+  return (
+    safeString(info.preview) ||
+    safeString(info.thumbnail) ||
+    safeString(info.thumb) ||
+    safeString(info.image) ||
+    safeString(info.previewUrl)
+  )
+}
+
+function pickTitle(info: Record<string, unknown>): string | undefined {
+  return (
+    safeString(info.title) ||
+    safeString(info.name) ||
+    safeString(info.filename) ||
+    safeString(info.fileName) ||
+    safeString(info.message)
+  )
+}
+
+function pickThumbnail(info: Record<string, unknown>): string | undefined {
+  return safeString(info.thumbnail) || safeString(info.thumb) || safeString(info.previewThumb) || pickPreviewUrl(info)
+}
+
+function pickAssetId(info: Record<string, unknown>): string | undefined {
+  const direct =
+    safeString(info.assetId) ||
+    safeString(info.stockId) ||
+    safeString(info.asset) ||
+    safeString(info.fileId)
+  if (direct) return direct
+
+  const nestedAsset = info.asset as Record<string, unknown> | undefined
+  const nestedResult = info.result as Record<string, unknown> | undefined
+  return (
+    safeString(info.id) ||
+    safeString(nestedAsset?.id) ||
+    safeString(nestedResult?.id) ||
+    safeString(nestedResult?.taskId)
+  )
+}
+
+function computeSourceUrl(item: MultiLinkItem, info?: Record<string, unknown>): string {
+  const fromItem = item.url ? safeString(item.url) : undefined
+  const fromInfo = info
+    ? safeString(info.url) ||
+      safeString(info.link) ||
+      safeString(info.downloadUrl) ||
+      safeString(info.originalUrl)
+    : undefined
+  const fallbackSite = item.site && item.id ? `${item.site}:${item.id}` : undefined
+  return fromItem ?? fromInfo ?? fallbackSite ?? ''
+}
+
+function extractTaskIdFromResponse(data: Record<string, unknown>): string | null {
+  const candidates: Array<unknown> = [
+    data.taskId,
+    data.taskID,
+    data.id,
+    data.task,
+    (data.task as Record<string, unknown> | undefined)?.id,
+    (data.task as Record<string, unknown> | undefined)?.taskId,
+    (data.result as Record<string, unknown> | undefined)?.taskId,
+    (data.result as Record<string, unknown> | undefined)?.id,
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate == null) continue
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return String(candidate)
+    }
+  }
+
+  return null
+}
+
+async function getOrCreateUserBalance(userId: string) {
+  return prisma.userBalance.upsert({
+    where: { userId },
+    update: {},
+    create: { userId },
+  })
+}
+
+type StockOrderTaskModel = Awaited<ReturnType<typeof prisma.stockOrderTask.findMany>>[number]
+
+const HTTP_URL_REGEX = /^https?:\/\//i
+
+function formatTaskResponse(task: StockOrderTaskModel) {
+  return {
+    taskId: task.id,
+    externalTaskId: task.externalTaskId,
+    status: task.status,
+    title: task.title,
+    previewUrl: task.previewUrl,
+    thumbnailUrl: task.thumbnailUrl,
+    costPoints: task.costPoints ?? undefined,
+    costAmount: task.costAmount ?? undefined,
+    costCurrency: task.costCurrency ?? undefined,
+    latestMessage: task.latestMessage ?? undefined,
+    downloadUrl: task.downloadUrl ?? undefined,
+    site: task.site ?? undefined,
+    assetId: task.assetId ?? undefined,
+    responsetype: task.responsetype ?? undefined,
+    batchId: task.batchId ?? undefined,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+    sourceUrl: task.sourceUrl,
+  }
+}
+
+async function fetchInfoForItem(item: MultiLinkItem, responsetype?: string) {
+  const hasSiteId = Boolean(item.site && item.id)
+  const path = hasSiteId ? `/stockinfo/${encodeURIComponent(item.site!)}/${encodeURIComponent(item.id!)}` : '/stockinfo'
+  const queryParams: Record<string, string | number | boolean | undefined> = {}
+  if (item.url) queryParams.url = item.url
+  if (responsetype) queryParams.responsetype = responsetype
+  const url = buildUrl(path, queryParams)
+  const response = await fetch(url, { headers: withApiKey() })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `Failed to fetch stock info (status ${response.status}).`)
+  }
+  const data = (await response.json()) as Record<string, unknown>
+  return data
+}
+
+async function queueStockOrderTask(task: StockOrderTaskModel, responsetype?: string) {
+  const hasSiteId = Boolean(task.site && task.assetId)
+  const path = hasSiteId
+    ? `/stockorder/${encodeURIComponent(task.site!)}/${encodeURIComponent(task.assetId!)}`
+    : '/stockorder'
+  const queryParams: Record<string, string | number | boolean | undefined> = {
+    responsetype,
+    responseType: responsetype,
+  }
+  if (task.sourceUrl && HTTP_URL_REGEX.test(task.sourceUrl)) {
+    queryParams.url = task.sourceUrl
+  }
+  const url = buildUrl(path, queryParams)
+  const response = await fetch(url, { headers: withApiKey() })
+  const bodyText = await response.text()
+  if (!response.ok) {
+    throw new Error(bodyText || `Failed to queue stock order (status ${response.status}).`)
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : {}
+  } catch {
+    parsed = {}
+  }
+
+  const externalTaskId = extractTaskIdFromResponse(parsed)
+  const latestMessage = safeString(parsed.message) ?? 'Order queued.'
+  const candidateDownload =
+    safeString(parsed.downloadLink) ||
+    safeString(parsed.downloadUrl) ||
+    safeString(parsed.url)
+  let finalDownload = candidateDownload ?? task.downloadUrl ?? undefined
+  const files = Array.isArray(parsed.files) ? (parsed.files as Array<Record<string, unknown>>) : []
+  if (!finalDownload && files.length > 0) {
+    const firstFileUrl = safeString(files[0]?.url)
+    if (firstFileUrl) finalDownload = firstFileUrl
+  }
+
+  return {
+    parsed,
+    externalTaskId,
+    latestMessage,
+    downloadUrl: finalDownload,
+  }
 }
 
 async function respondByContentType(r: FetchResponse, res: express.Response) {
@@ -106,6 +326,47 @@ const ConfirmBodySchema = z
   })
   .partial()
   .strict()
+
+const MultiLinkItemSchema = z
+  .object({
+    url: z.string().url().optional(),
+    site: z.string().min(1).optional(),
+    id: z.string().min(1).optional(),
+  })
+  .refine((data) => Boolean(data.url) || (Boolean(data.site) && Boolean(data.id)), {
+    message: 'Provide a direct url or both site and id.',
+  })
+
+const PreviewRequestSchema = z
+  .object({
+    userId: z.string().min(1),
+    responsetype: ResponseTypeEnum.optional(),
+    items: z.array(MultiLinkItemSchema).min(1).max(MAX_BULK_ITEMS),
+  })
+  .strict()
+
+const OrderCommitSchema = z
+  .object({
+    userId: z.string().min(1),
+    responsetype: ResponseTypeEnum.optional(),
+    taskIds: z.array(z.string().min(1)).min(1),
+  })
+  .strict()
+
+const BalanceAdjustSchema = z
+  .object({
+    deltaPoints: z.number().int(),
+  })
+  .strict()
+
+const TaskListQuerySchema = z
+  .object({
+    userId: z.string().min(1),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+
+type MultiLinkItem = z.infer<typeof MultiLinkItemSchema>
 
 function badRequest(res: express.Response, issues: z.ZodIssue[]) {
   return res.status(400).json({ error: 'ValidationError', issues })
