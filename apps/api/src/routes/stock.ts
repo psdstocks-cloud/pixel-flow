@@ -5,6 +5,18 @@ import prisma from '../db'
 
 const router = express.Router()
 
+const ALLOWED_ORIGIN = process.env.STOCK_API_ALLOWED_ORIGIN || '*'
+
+router.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204)
+  }
+  next()
+})
+
 const NEHTW_BASE = 'https://nehtw.com/api'
 const API_KEY = process.env.NEHTW_API_KEY
 
