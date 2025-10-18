@@ -594,7 +594,30 @@ router.get('/sites', async (_req, res, next) => {
   try {
     const url = buildUrl('/stocksites')
     const r = await fetch(url, { headers: withApiKey() })
-    return respondByContentType(r, res)
+    if (!r.ok) {
+      const text = await r.text()
+      throw new Error(text || `Failed to load stock sites (status ${r.status}).`)
+    }
+    const raw = (await r.json()) as Record<string, unknown>
+    const sites = Object.entries(raw)
+      .filter(([key]) => key !== 'notificationChannel')
+      .map(([site, value]) => {
+        const entry = (typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {})
+        const price = typeof entry.price === 'number' ? entry.price : Number(entry.price)
+        const minPrice =
+          typeof entry.minPrice === 'number' ? entry.minPrice : entry.minPrice != null ? Number(entry.minPrice) : undefined
+        return {
+          site,
+          displayName: typeof entry.displayName === 'string' ? entry.displayName : undefined,
+          price: Number.isFinite(price) ? price : undefined,
+          minPrice: Number.isFinite(minPrice ?? NaN) ? minPrice : undefined,
+          currency: typeof entry.currency === 'string' ? entry.currency : undefined,
+          active: typeof entry.active === 'boolean' ? entry.active : undefined,
+        }
+      })
+      .sort((a, b) => a.site.localeCompare(b.site))
+
+    return res.json({ sites })
   } catch (err) {
     next(err)
   }
