@@ -1,120 +1,85 @@
 'use client'
 
-import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { FormEvent, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, Field, StatusBadge, Toast } from '../../../components'
 import {
-  createOrder,
-  fetchSites,
-  getOrderStatus,
-  queries,
-  type StockOrderPayload,
-  type StockOrderResponse,
-  type StockSite,
-  type StockStatusResponse,
-  detectSiteAndIdFromUrl,
   buildDownloadUrl,
+  commitOrder,
+  detectSiteAndIdFromUrl,
+  fetchBalance,
+  fetchSites,
+  fetchTasks,
+  previewOrder,
+  queries,
+  type CommitOrderPayload,
+  type PreviewOrderPayload,
+  type PreviewOrderResponse,
+  type ResponseType,
+  type StockOrderTask,
+  type StockSite,
 } from '../../../lib/stock'
+import { useSession } from '../../../lib/session'
 
-type FormValues = {
-  site: string
-  id: string
-  url: string
-  responsetype: NonNullable<StockOrderPayload['responsetype']>
-  notificationChannel: string
+const MAX_LINKS = 5
+const HISTORY_LIMIT = 25
+const DEFAULT_RESPONSE_TYPE: ResponseType = 'any'
+
+type PreviewEntry = PreviewOrderResponse['results'][number]
+type Feedback = { type: 'success' | 'error'; message: string }
+
+const RESPONSE_OPTIONS: Array<{ value: ResponseType; label: string }> = [
+  { value: 'any', label: 'Any (auto)' },
+  { value: 'gdrive', label: 'Google Drive' },
+  { value: 'asia', label: 'Asia CDN' },
+  { value: 'mydrivelink', label: 'My Drive Link' },
+]
+
+const currencyFormatter = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 2,
+})
+
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+function formatPoints(points?: number | null) {
+  if (points == null) return '—'
+  return `${points} pts`
 }
 
-type FormErrors = Partial<Record<keyof FormValues, string>>
-
-type LatestResult =
-  | { status: 'success'; response: StockOrderResponse }
-  | { status: 'error'; message: string }
-  | null
-
-const initialFormValues: FormValues = {
-  site: '',
-  id: '',
-  url: '',
-  responsetype: 'any',
-  notificationChannel: '',
-}
-
-function isSuccessResult(
-  result: LatestResult,
-): result is { status: 'success'; response: StockOrderResponse } {
-  return Boolean(result && result.status === 'success')
-}
-
-function isErrorResult(result: LatestResult): result is { status: 'error'; message: string } {
-  return Boolean(result && result.status === 'error')
-}
-
-function isValidHttpUrl(value: string) {
-  try {
-    const parsed = new URL(value)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
+function formatCost(task: StockOrderTask) {
+  if (task.costAmount != null && task.costCurrency) {
+    try {
+      return currencyFormatter.format(task.costAmount)
+    } catch {
+      return `${task.costAmount} ${task.costCurrency}`
+    }
   }
-}
-
-function isValidNotificationChannel(value: string) {
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return isValidHttpUrl(value) || emailPattern.test(value)
-}
-
-function validate(values: FormValues): FormErrors {
-  const errors: FormErrors = {}
-  const site = values.site.trim()
-  const id = values.id.trim()
-  const url = values.url.trim()
-  const notification = values.notificationChannel.trim()
-  const hasUrl = url.length > 0
-  const hasSite = site.length > 0
-  const hasId = id.length > 0
-
-  if (!hasUrl && !(hasSite && hasId)) {
-    const message = 'Provide a direct URL or supply both site and asset ID.'
-    errors.url = message
-    errors.site = message
-    errors.id = message
-  } else {
-    if (hasSite && !hasId) errors.id = 'An asset ID is required when a site is selected.'
-    if (hasId && !hasSite) errors.site = 'Select a site when providing an asset ID.'
+  if (task.costPoints != null) {
+    return `${task.costPoints} pts`
   }
-
-  if (hasUrl && !isValidHttpUrl(url)) {
-    errors.url = 'Enter a valid URL starting with http:// or https://.'
-  }
-
-  if (notification && !isValidNotificationChannel(notification)) {
-    errors.notificationChannel = 'Provide a valid webhook URL or email address.'
-  }
-
-  return errors
-}
-
-type BulkOrderResult = {
-  url: string
-  status: 'success' | 'error'
-  message: string
-  taskId?: string
+  return '—'
 }
 
 export default function StockOrderPage() {
-  const [formValues, setFormValues] = useState<FormValues>(initialFormValues)
-  const [formErrors, setFormErrors] = useState<FormErrors>({})
-  const [latestResult, setLatestResult] = useState<LatestResult>(null)
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
-  const [pollingEnabled, setPollingEnabled] = useState(false)
-  const [statusSnapshot, setStatusSnapshot] = useState<StockStatusResponse | null>(null)
-  const [bulkInput, setBulkInput] = useState('')
-  const [bulkResponseType, setBulkResponseType] = useState<FormValues['responsetype']>('any')
-  const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
-  const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
-  const [bulkSubmitting, setBulkSubmitting] = useState(false)
-  const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'providers'>('single')
+  const { session, status: sessionStatus, error: sessionError } = useSession()
+  const queryClient = useQueryClient()
+
+  const userId = session?.userId ?? null
+  const isAuthenticated = Boolean(userId)
+
+  const [links, setLinks] = useState<string[]>([''])
+  const [responseType, setResponseType] = useState<ResponseType>(DEFAULT_RESPONSE_TYPE)
+  const [previewEntries, setPreviewEntries] = useState<PreviewEntry[]>([])
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+  const [previewFeedback, setPreviewFeedback] = useState<Feedback | null>(null)
+  const [commitFeedback, setCommitFeedback] = useState<Feedback | null>(null)
+
+  const pendingTaskIdsRef = useRef<string[]>([])
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -122,701 +87,600 @@ export default function StockOrderPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const sites = useMemo<StockSite[]>(() => sitesQuery.data ?? [], [sitesQuery.data])
-  const sitesLoading = sitesQuery.isLoading
-  const sitesError =
-    sitesQuery.isError && sitesQuery.error instanceof Error
-      ? sitesQuery.error.message
-      : sitesQuery.isError
-        ? 'Unable to load stock sites.'
-        : null
-
-  const detectionPreview = useMemo(() => {
-    const trimmed = formValues.url.trim()
-    if (!trimmed) return null
-    return detectSiteAndIdFromUrl(trimmed, sites)
-  }, [formValues.url, sites])
-
-  const detectionMessage = useMemo(() => {
-    const trimmed = formValues.url.trim()
-    if (!trimmed) return null
-    if (!isValidHttpUrl(trimmed)) return 'Enter a valid URL to enable auto-detection.'
-    if (!detectionPreview) return 'Provider detection unavailable for this URL.'
-    return null
-  }, [formValues.url, detectionPreview])
-
-  useEffect(() => {
-    if (!detectionPreview) return
-    setFormValues((prev) => {
-      let changed = false
-      const next = { ...prev }
-      if (!prev.site && detectionPreview.site) {
-        next.site = detectionPreview.site
-        changed = true
-      }
-      if (!prev.id && detectionPreview.id) {
-        next.id = detectionPreview.id
-        changed = true
-      }
-      return changed ? next : prev
-    })
-  }, [detectionPreview])
-
-  const orderStatusQuery = useQuery<StockStatusResponse>({
-    queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
+  const balanceQuery = useQuery({
+    queryKey: userId ? queries.balance(userId) : ['stock', 'balance', 'anonymous'],
     queryFn: ({ signal }) => {
-      if (!activeTaskId) throw new Error('No task to poll.')
-      return getOrderStatus(activeTaskId, undefined, signal)
+      if (!userId) throw new Error('Missing user context')
+      return fetchBalance(userId, signal)
     },
-    enabled: Boolean(activeTaskId) && pollingEnabled,
-    refetchInterval: pollingEnabled ? 5000 : false,
-    refetchOnWindowFocus: false,
+    enabled: isAuthenticated,
+    staleTime: 15_000,
   })
 
-  const statusData = orderStatusQuery.data
-  const statusError =
-    orderStatusQuery.isError && orderStatusQuery.error instanceof Error
-      ? orderStatusQuery.error.message
-      : orderStatusQuery.isError
-        ? 'Unable to refresh order status.'
-        : null
-  const isStatusLoading = pollingEnabled && orderStatusQuery.isLoading
-  const isStatusFetching = orderStatusQuery.isFetching
-
-  useEffect(() => {
-    if (!statusData) return
-    setStatusSnapshot(statusData)
-    const normalized = typeof statusData.status === 'string' ? statusData.status.toLowerCase() : ''
-    const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'canceled', 'error'])
-    if (terminalStatuses.has(normalized)) {
-      setPollingEnabled(false)
-    }
-  }, [statusData])
-
-  const createOrderMutation = useMutation({
-    mutationFn: async (payload: StockOrderPayload) => createOrder(payload),
-    onMutate: () => {
-      setLatestResult(null)
-      setActiveTaskId(null)
-      setPollingEnabled(false)
-      setStatusSnapshot(null)
+  const tasksQuery = useQuery({
+    queryKey: userId ? queries.tasks(userId, HISTORY_LIMIT) : ['stock', 'tasks', 'anonymous'],
+    queryFn: ({ signal }) => {
+      if (!userId) throw new Error('Missing user context')
+      return fetchTasks(userId, HISTORY_LIMIT, signal)
     },
+    enabled: isAuthenticated,
+    staleTime: 15_000,
+  })
+
+  const detectionHints = useMemo(() => {
+    const sites = (sitesQuery.data ?? []) as StockSite[]
+    return links.map((link) => {
+      const trimmed = link.trim()
+      if (!trimmed) return null
+      return detectSiteAndIdFromUrl(trimmed, sites)
+    })
+  }, [links, sitesQuery.data])
+
+  const previewMutation = useMutation({
+    mutationFn: (payload: PreviewOrderPayload) => previewOrder(payload),
     onSuccess: (data) => {
-      setLatestResult({ status: 'success', response: data })
-      setFormErrors({})
-      setFormValues(initialFormValues)
-      setActiveTaskId(data.taskId ?? null)
-      setStatusSnapshot(null)
-      setPollingEnabled(Boolean(data.taskId))
+      setPreviewEntries(data.results)
+      setSelectedTaskIds(() => {
+        const next = new Set<string>()
+        data.results.forEach((result) => {
+          if (result.task) next.add(result.task.taskId)
+        })
+        return next
+      })
+      setPreviewFeedback({
+        type: data.results.some((result) => result.task) ? 'success' : 'error',
+        message: data.results.some((result) => result.task)
+          ? 'Preview ready. Confirm the assets you want to queue.'
+          : 'No preview tasks were created. Verify the URLs and try again.',
+      })
+      setCommitFeedback(null)
+      if (userId) {
+        queryClient.setQueryData(queries.balance(userId), data.balance)
+      }
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : 'Failed to queue the stock order.'
-      setLatestResult({ status: 'error', message })
-      setActiveTaskId(null)
-      setPollingEnabled(false)
-      setStatusSnapshot(null)
+      setPreviewFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Unable to preview links. Please try again.',
+      })
     },
   })
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const trimmedValues: FormValues = {
-      site: formValues.site.trim(),
-      id: formValues.id.trim(),
-      url: formValues.url.trim(),
-      responsetype: formValues.responsetype,
-      notificationChannel: formValues.notificationChannel.trim(),
-    }
-    const nextErrors = validate(trimmedValues)
-    setFormErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
+  const commitMutation = useMutation({
+    mutationFn: (payload: CommitOrderPayload) => commitOrder(payload),
+    onMutate: (payload) => {
+      pendingTaskIdsRef.current = payload.taskIds
+    },
+    onSuccess: (data) => {
+      if (userId) {
+        queryClient.setQueryData(queries.balance(userId), data.balance)
+        void queryClient.invalidateQueries({ queryKey: queries.tasks(userId, HISTORY_LIMIT) })
+      }
 
-    const payload: StockOrderPayload = {
-      site: trimmedValues.site || undefined,
-      id: trimmedValues.id || undefined,
-      url: trimmedValues.url || undefined,
-      responsetype: trimmedValues.responsetype,
-      notificationChannel: trimmedValues.notificationChannel || undefined,
-    }
+      const committedIds = new Set(pendingTaskIdsRef.current)
+      const failureMap = new Map(data.failures.map((failure) => [failure.taskId, failure.error]))
 
-    createOrderMutation.mutate(payload)
+      setPreviewEntries((prev) =>
+        prev
+          .map<PreviewEntry | null>((entry) => {
+            if (!entry.task) return entry
+            const { taskId } = entry.task
+            if (!committedIds.has(taskId)) return entry
+            if (!failureMap.has(taskId)) {
+              return null
+            }
+            const updatedTask = data.tasks.find((task) => task.taskId === taskId) ?? entry.task
+            return {
+              task: {
+                ...updatedTask,
+                status: 'error',
+                latestMessage: failureMap.get(taskId) ?? updatedTask.latestMessage,
+              },
+              error: failureMap.get(taskId) ?? entry.error,
+            }
+          })
+          .filter((entry): entry is PreviewEntry => Boolean(entry)),
+      )
+
+      setSelectedTaskIds(new Set(failureMap.keys()))
+
+      setCommitFeedback({
+        type: data.failures.length > 0 ? 'error' : 'success',
+        message:
+          data.failures.length > 0
+            ? 'Some orders could not be queued. Review the errors below.'
+            : 'All selected orders were queued successfully.',
+      })
+
+      if (data.failures.length === 0) {
+        setPreviewEntries([])
+        setSelectedTaskIds(new Set())
+        setPreviewFeedback(null)
+      }
+    },
+    onError: (error: unknown) => {
+      setCommitFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Unable to queue the selected orders.',
+      })
+    },
+  })
+
+  const handleLinkChange = (index: number, value: string) => {
+    setLinks((prev) => {
+      const next = [...prev]
+      next[index] = value
+      return next
+    })
   }
 
-  const latestSuccess = isSuccessResult(latestResult) ? latestResult.response : null
-  const latestError = isErrorResult(latestResult) ? latestResult : null
-
-  const currentStatus = (statusSnapshot?.status ?? latestSuccess?.status ?? 'queued') as string
-  const currentMessage = (() => {
-    if (statusSnapshot && typeof statusSnapshot.message === 'string') return statusSnapshot.message
-    if (latestSuccess && typeof latestSuccess.message === 'string') return latestSuccess.message
-    return undefined
-  })()
-  const currentProgress =
-    statusSnapshot && typeof statusSnapshot.progress === 'number'
-      ? statusSnapshot.progress
-      : undefined
-  const currentDownloadUrl = statusSnapshot?.downloadUrl as string | undefined
-  const downloadHref = (() => {
-    const taskId = activeTaskId ?? latestSuccess?.taskId
-    if (!taskId) return undefined
-    if (currentDownloadUrl) return currentDownloadUrl
-    if ((statusSnapshot?.status ?? latestSuccess?.status) === 'ready') {
-      return buildDownloadUrl(taskId, formValues.responsetype)
-    }
-    return undefined
-  })()
-  const queuedAt = latestSuccess?.queuedAt ? new Date(latestSuccess.queuedAt).toLocaleString() : null
-  const lastUpdated = statusSnapshot
-    ? new Date(orderStatusQuery.dataUpdatedAt || Date.now()).toLocaleString()
-    : queuedAt
-
-  const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
-  const normalizedStatus = (currentStatus ?? 'queued').toLowerCase()
-  const statusAliases: Record<string, string> = {
-    pending: 'queued',
-    queued: 'queued',
-    running: 'processing',
-    processing: 'processing',
-    inprogress: 'processing',
-    ready: 'ready',
-    completed: 'completed',
-    success: 'completed',
+  const handleAddLink = () => {
+    setLinks((prev) => {
+      if (prev.length >= MAX_LINKS) return prev
+      return [...prev, '']
+    })
   }
-  const resolvedStatus = statusAliases[normalizedStatus] ?? normalizedStatus
-  const isErrorStatus = ['failed', 'error', 'cancelled', 'canceled'].includes(normalizedStatus)
-  const timelineSteps = [
-    {
-      key: 'queued',
-      title: 'Queued',
-      description: 'We registered your order and queued it with the provider.',
-    },
-    {
-      key: 'processing',
-      title: 'Processing',
-      description: 'The provider is gathering the asset and validating access.',
-    },
-    {
-      key: 'ready',
-      title: 'Ready',
-      description: 'Download link is ready whenever you are.',
-    },
-    {
-      key: 'completed',
-      title: 'Completed',
-      description: 'The asset has been delivered successfully.',
-    },
-  ] as const
-  const processingIndex = timelineSteps.findIndex((step) => step.key === 'processing')
-  const timelineActiveIndex = (() => {
-    if (isErrorStatus) return processingIndex >= 0 ? processingIndex : 0
-    const idx = timelineSteps.findIndex((step) => step.key === resolvedStatus)
-    return idx >= 0 ? idx : 0
-  })()
-  const progressValue =
-    typeof currentProgress === 'number' ? Math.round(Math.max(0, Math.min(100, currentProgress))) : null
-  const activeTaskLabel = activeTaskId ?? latestSuccess?.taskId ?? null
-  const providerCount = sites.length
 
-  const tabs = [
-    {
-      key: 'single' as const,
-      label: 'Single order',
-      summary: 'Queue and monitor individual downloads.',
-    },
-    {
-      key: 'bulk' as const,
-      label: 'Bulk order',
-      summary: 'Submit multiple URLs with shared settings.',
-    },
-    {
-      key: 'providers' as const,
-      label: 'Providers',
-      summary: 'Check pricing and availability.',
-    },
-  ]
+  const handleRemoveLink = (index: number) => {
+    setLinks((prev) => {
+      if (prev.length === 1) return ['']
+      return prev.filter((_, idx) => idx !== index)
+    })
+  }
 
-  const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handlePreviewSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const lines = bulkInput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-
-    const notification = bulkNotificationChannel.trim()
-    if (notification && !isValidNotificationChannel(notification)) {
-      setBulkResults([
-        {
-          url: 'Notification channel',
-          status: 'error',
-          message: 'Provide a valid webhook URL or email address for bulk orders.',
-        },
-      ])
+    if (!userId) {
+      setPreviewFeedback({ type: 'error', message: 'Sign in to preview and queue stock downloads.' })
       return
     }
 
-    if (lines.length === 0) {
-      setBulkResults([
-        { url: 'Bulk queue', status: 'error', message: 'Add at least one URL to queue.' },
-      ])
+    const items = links
+      .map((link) => link.trim())
+      .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index)
+
+    if (items.length === 0) {
+      setPreviewFeedback({ type: 'error', message: 'Add at least one asset URL before previewing.' })
       return
     }
 
-    setBulkSubmitting(true)
-    const results: BulkOrderResult[] = []
+    setPreviewFeedback(null)
+    setCommitFeedback(null)
 
-    for (const rawUrl of lines) {
-      const trimmedUrl = rawUrl.trim()
-      const detection = detectSiteAndIdFromUrl(trimmedUrl, sites)
-      const url = isValidHttpUrl(trimmedUrl) ? trimmedUrl : undefined
-      const site = detection?.site
-      const id = detection?.id
-
-      if (!url && !(site && id)) {
-        results.push({
-          url: rawUrl,
-          status: 'error',
-          message: 'Could not detect provider. Add site and ID manually.',
-        })
-        continue
-      }
-
-      try {
-        const response = await createOrder({
-          url,
-          site,
-          id,
-          responsetype: bulkResponseType,
-          notificationChannel: notification || undefined,
-        })
-        results.push({
-          url: rawUrl,
-          status: 'success',
-          message: response.message ?? 'Queued.',
-          taskId: response.taskId,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to queue order.'
-        results.push({ url: rawUrl, status: 'error', message })
-      }
+    const payload: PreviewOrderPayload = {
+      userId,
+      responsetype: responseType,
+      items: items.map((url) => ({ url })),
     }
 
-    setBulkResults(results)
-    setBulkSubmitting(false)
+    previewMutation.mutate(payload)
   }
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }
+
+  const removePreviewTask = (taskId: string) => {
+    setPreviewEntries((prev) => prev.filter((entry) => entry.task?.taskId !== taskId))
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev)
+      next.delete(taskId)
+      return next
+    })
+  }
+
+  const commitOrders = (taskIds: string[]) => {
+    if (!userId || taskIds.length === 0) return
+    const payload: CommitOrderPayload = {
+      userId,
+      taskIds,
+      responsetype: responseType,
+    }
+    commitMutation.mutate(payload)
+  }
+
+  const handleConfirmSelected = () => {
+    commitOrders(Array.from(selectedTaskIds))
+  }
+
+  const handleCommitSingle = (taskId: string) => {
+    commitOrders([taskId])
+  }
+
+  const clearPreviewState = () => {
+    setPreviewEntries([])
+    setSelectedTaskIds(new Set())
+    setPreviewFeedback(null)
+    setCommitFeedback(null)
+  }
+
+  const selectedPreviewTasks = previewEntries.filter(
+    (entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task && selectedTaskIds.has(entry.task.taskId)),
+  )
+
+  const totalSelectedPoints = selectedPreviewTasks.reduce((sum, entry) => sum + (entry.task.costPoints ?? 0), 0)
+
+  const providerCount = sitesQuery.data?.length ?? 0
+  const nextPaymentLabel = session?.nextPaymentDue
+    ? dateTimeFormatter.format(new Date(session.nextPaymentDue))
+    : 'Not scheduled'
+  const historyTasks = tasksQuery.data ?? []
+
+  const showSignInWarning = sessionStatus === 'ready' && !isAuthenticated
 
   return (
     <main>
       <section className="order-hero">
         <span className="hero-badge">Stock workflow</span>
-        <h1>Download stock assets in a glass-smooth flow.</h1>
+        <h1>Preview, confirm, and download stock assets in one flow.</h1>
         <p className="hero-description">
-          Queue single or bulk orders, track real-time status, and fetch downloads without leaving the dashboard.
+          Paste up to five links, inspect costs and previews, and only spend points once you confirm the order.
         </p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <span className="glass-chip">Providers live: {providerCount}</span>
-          <span className="glass-chip">Auto-detect URLs</span>
-          <span className="glass-chip">Choose CDN mirror</span>
+          <span className="glass-chip">Points based billing</span>
+          <span className="glass-chip">Monthly renewal reminders</span>
         </div>
       </section>
 
-      <div className="tab-nav" role="tablist" aria-label="Stock order sections">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.key}
-            className={['tab-button', activeTab === tab.key ? 'active' : ''].filter(Boolean).join(' ')}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-            <span>{tab.summary}</span>
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'single' ? (
-        <div className="tab-panel split" role="tabpanel">
-          <Card title="Single order" description="Queue a stock asset and configure delivery preferences.">
-            <>
-              <form className="form-grid" onSubmit={handleSubmit}>
-                <Field label="Provider" hint="Select a stock provider." error={formErrors.site}>
-                  <select
-                    value={formValues.site}
-                    onChange={(event) => setFormValues((prev) => ({ ...prev, site: event.target.value }))}
-                    disabled={sitesLoading}
-                  >
-                    <option value="">Select a provider</option>
-                    {sites.map((site) => (
-                      <option key={site.site} value={site.site}>
-                        {site.displayName ?? site.site}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field
-                  label="Asset ID"
-                  hint="The identifier used by the stock provider (e.g. 123456789)."
-                  error={formErrors.id}
-                >
-                  <input
-                    value={formValues.id}
-                    onChange={(event) => setFormValues((prev) => ({ ...prev, id: event.target.value }))}
-                    placeholder="e.g. 123456789"
-                    autoComplete="off"
-                  />
-                </Field>
-
-                <Field
-                  label="Direct URL"
-                  hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
-                  error={formErrors.url}
-                >
-                  <input
-                    value={formValues.url}
-                    onChange={(event) => setFormValues((prev) => ({ ...prev, url: event.target.value }))}
-                    placeholder="https://example.com/asset"
-                    autoComplete="off"
-                  />
-                </Field>
-
-                <Field label="Response type" hint="Prefer a specific delivery destination?">
-                  <select
-                    value={formValues.responsetype}
-                    onChange={(event) =>
-                      setFormValues((prev) => ({
-                        ...prev,
-                        responsetype: event.target.value as FormValues['responsetype'],
-                      }))
-                    }
-                  >
-                    <option value="any">Any (auto)</option>
-                    <option value="gdrive">Google Drive</option>
-                    <option value="asia">Asia CDN</option>
-                    <option value="mydrivelink">My Drive Link</option>
-                  </select>
-                </Field>
-
-                <Field
-                  label="Notification channel"
-                  hint="Optional webhook or email for completion updates."
-                  error={formErrors.notificationChannel}
-                >
-                  <input
-                    value={formValues.notificationChannel}
-                    onChange={(event) =>
-                      setFormValues((prev) => ({ ...prev, notificationChannel: event.target.value }))
-                    }
-                    placeholder="https://hooks.slack.com/... or email@example.com"
-                    autoComplete="off"
-                  />
-                </Field>
-
-                <div className="form-actions">
-                  <button className="primary" type="submit" disabled={createOrderMutation.isPending}>
-                    <span className="button-content">
-                      {createOrderMutation.isPending ? (
-                        <span className="button-spinner" aria-hidden="true" />
-                      ) : null}
-                      {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
-                    </span>
-                  </button>
-                  {detectionPreview ? (
-                    <span className="glass-chip" aria-live="polite">
-                      Suggested: {detectionPreview.site}
-                      {detectionPreview.id ? ` · ${detectionPreview.id}` : ''}
-                    </span>
-                  ) : null}
-                </div>
-              </form>
-
-              {sitesLoading ? (
-                <Toast title="Loading providers" message="Fetching sites from the API." variant="info" />
-              ) : null}
-              {sitesError ? (
-                <Toast title="Could not load providers" message={sitesError} variant="error" />
-              ) : null}
-            </>
-          </Card>
-
-          <Card
-            title="Task status"
-            description="Monitor progress, download results, and review recent activity."
-            headerSlot={
-              activeTaskLabel ? <span className="glass-chip">Task {activeTaskLabel.slice(0, 10)}…</span> : null
-            }
-          >
-            {latestError ? (
-              <Toast title="Could not queue order" message={latestError.message} variant="error" />
-            ) : showStatusPanel ? (
-              <>
-                <div className="status-badge-row">
-                  <StatusBadge status={resolvedStatus ?? 'queued'} />
-                  {pollingEnabled || isStatusFetching ? (
-                    <span className="polling-indicator" title="Polling for updates" aria-hidden="true" />
-                  ) : null}
-                  <div className="status-meta">
-                    {activeTaskLabel ? <span>Task ID: {activeTaskLabel}</span> : null}
-                    {queuedAt ? <span>Queued: {queuedAt}</span> : null}
-                    {lastUpdated ? <span>Last update: {lastUpdated}</span> : null}
-                  </div>
-                </div>
-
-                {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
-
-                {typeof progressValue === 'number' ? (
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div
-                      style={{
-                        height: 8,
-                        borderRadius: 999,
-                        background: 'rgba(255,255,255,0.08)',
-                        position: 'relative',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          width: `${progressValue}%`,
-                          borderRadius: 999,
-                          background:
-                            'linear-gradient(90deg, rgba(56, 189, 248, 0.85), rgba(168, 85, 247, 0.8))',
-                          transition: 'width 0.3s ease',
-                        }}
-                      />
-                    </div>
-                    <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>{progressValue}%</span>
-                  </div>
-                ) : null}
-
-                {downloadHref ? (
-                  <a
-                    href={downloadHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-button"
-                  >
-                    Download latest files
-                  </a>
-                ) : null}
-
-                <div className="status-timeline">
-                  {timelineSteps.map((step, index) => {
-                    const isReached = index <= timelineActiveIndex
-                    const indicatorClassName = ['status-indicator', isReached ? 'active' : ''].filter(Boolean).join(' ')
-                    const tone = isErrorStatus && index >= timelineActiveIndex ? 'var(--pf-error)' : undefined
-                    return (
-                      <div className="status-step" key={step.key}>
-                        <div
-                          className={indicatorClassName}
-                          style={tone ? { borderColor: tone, boxShadow: `0 0 14px ${tone}`, background: tone } : undefined}
-                        />
-                        <div className="status-content">
-                          <strong>{step.title}</strong>
-                          <span>{step.description}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div className="status-actions">
-                  {pollingEnabled ? (
-                    <button type="button" className="secondary" onClick={() => setPollingEnabled(false)}>
-                      Pause polling
-                    </button>
-                  ) : null}
-                  {activeTaskId ? (
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => {
-                        if (!activeTaskId) return
-                        if (!pollingEnabled) setPollingEnabled(true)
-                        orderStatusQuery.refetch()
-                      }}
-                      disabled={isStatusFetching}
-                    >
-                      <span className="button-content">
-                        {isStatusFetching ? <span className="button-spinner" aria-hidden="true" /> : null}
-                        {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
-                      </span>
-                    </button>
-                  ) : null}
-                </div>
-
-                {isStatusLoading ? (
-                  <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
-                ) : null}
-                {!pollingEnabled && activeTaskId ? (
-                  <Toast
-                    title="Polling paused"
-                    message="Automatic updates are paused after reaching a final state. Use refresh to check again."
-                    variant="info"
-                  />
-                ) : null}
-                {statusError ? <Toast title="Status unavailable" message={statusError} variant="error" /> : null}
-              </>
-            ) : latestSuccess ? (
-              <>
-                <div className="status-badge-row">
-                  <StatusBadge status={latestSuccess.status ?? 'queued'} />
-                  <div className="status-meta">
-                    {latestSuccess.taskId ? <span>Task ID: {latestSuccess.taskId}</span> : null}
-                    {queuedAt ? <span>Queued: {queuedAt}</span> : null}
-                  </div>
-                </div>
-                {latestSuccess.message ? <p style={{ margin: 0 }}>{latestSuccess.message}</p> : null}
-                <Toast title="Order queued" message="Waiting for the first status update." variant="success" />
-              </>
-            ) : (
-              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
-                Queue a stock order to start tracking status updates.
-              </p>
-            )}
-          </Card>
-        </div>
+      {sessionStatus === 'loading' ? (
+        <Toast title="Loading account" message="Fetching your session details." variant="info" />
+      ) : null}
+      {sessionError ? <Toast title="Session unavailable" message={sessionError.message} variant="error" /> : null}
+      {showSignInWarning ? (
+        <Toast
+          title="Sign in required"
+          message="Create an account, activate it, and purchase a points package to continue."
+          variant="error"
+        />
       ) : null}
 
-      {activeTab === 'bulk' ? (
-        <div className="tab-panel single" role="tabpanel">
-          <Card
-            title="Bulk queue"
-            description="Submit multiple asset URLs in one go. We’ll auto-detect supported providers when possible."
-          >
-            <>
-              <form className="form-grid" onSubmit={handleBulkSubmit}>
-                <Field label="Asset URLs" hint="Enter one URL per line.">
-                  <textarea
-                    value={bulkInput}
-                    onChange={(event) => setBulkInput(event.target.value)}
-                    rows={6}
-                    placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
-                    style={{ resize: 'vertical' }}
-                  />
-                </Field>
+      <div className="tab-panel split">
+        <Card
+          title="Prepare your batch"
+          description="Add up to five asset URLs. We’ll preview costs before you spend any points."
+        >
+          <>
+            <form className="form-grid" onSubmit={handlePreviewSubmit}>
+              {links.map((link, index) => {
+                const detection = detectionHints[index]
+                const hint = detection
+                  ? `Detected provider: ${detection.site ?? 'unknown'}${detection.id ? ` · asset ${detection.id}` : ''}`
+                  : 'Paste a direct asset URL. Provider detection runs automatically.'
+                return (
+                  <div key={`link-row-${index}`} className="link-input-row">
+                    <Field label={`Asset URL ${index + 1}`} hint={hint}>
+                      <div className="link-input-wrapper">
+                        <input
+                          value={link}
+                          onChange={(event) => handleLinkChange(index, event.target.value)}
+                          placeholder="https://provider.com/path/to/asset"
+                          autoComplete="off"
+                          disabled={!isAuthenticated}
+                        />
+                        {links.length > 1 ? (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => handleRemoveLink(index)}
+                            style={{ marginLeft: 8 }}
+                            disabled={!isAuthenticated}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    </Field>
+                  </div>
+                )
+              })}
 
-                <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                  <Field label="Response type">
+              <div className="form-actions" style={{ gap: 12 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleAddLink}
+                    disabled={!isAuthenticated || links.length >= MAX_LINKS}
+                  >
+                    Add URL
+                  </button>
+
+                  <Field label="Response type" hint="Prefer a delivery target?">
                     <select
-                      value={bulkResponseType}
-                      onChange={(event) => setBulkResponseType(event.target.value as FormValues['responsetype'])}
+                      value={responseType}
+                      onChange={(event) => setResponseType(event.target.value as ResponseType)}
+                      disabled={!isAuthenticated}
                     >
-                      <option value="any">Any (auto)</option>
-                      <option value="gdrive">Google Drive</option>
-                      <option value="asia">Asia CDN</option>
-                      <option value="mydrivelink">My Drive Link</option>
+                      {RESPONSE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </Field>
-
-                  <Field label="Notification channel" hint="Optional email or webhook for all queued tasks.">
-                    <input
-                      value={bulkNotificationChannel}
-                      onChange={(event) => setBulkNotificationChannel(event.target.value)}
-                      placeholder="https://hooks.slack.com/... or email@example.com"
-                      autoComplete="off"
-                    />
-                  </Field>
                 </div>
 
-                <div className="form-actions">
-                  <button type="submit" className="primary" disabled={bulkSubmitting}>
-                    <span className="button-content">
-                      {bulkSubmitting ? <span className="button-spinner" aria-hidden="true" /> : null}
-                      {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
-                    </span>
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={!isAuthenticated || previewMutation.isPending}
+                >
+                  <span className="button-content">
+                    {previewMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
+                    {previewMutation.isPending ? 'Previewing…' : 'Preview order'}
+                  </span>
+                </button>
+
+                {previewEntries.length > 0 || previewMutation.isPending ? (
+                  <button type="button" className="secondary" onClick={clearPreviewState} disabled={previewMutation.isPending}>
+                    Reset preview
                   </button>
-                  <span className="glass-chip">Up to 5 URLs per batch</span>
-                </div>
-              </form>
+                ) : null}
+              </div>
+            </form>
 
-              {bulkResults.length > 0 ? (
-                <div className="bulk-results" aria-live="polite">
-                  {bulkResults.map((result) => (
-                    <div
-                      className="bulk-result-card"
-                      key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
-                    >
-                      <div className="bulk-result-header">
-                        <span
-                          className={`bulk-result-icon ${result.status === 'success' ? 'success' : 'error'}`}
-                          aria-hidden="true"
-                        >
-                          {result.status === 'success' ? '✓' : '✕'}
-                        </span>
-                        <strong>{result.url}</strong>
-                      </div>
-                      <span style={{ color: 'var(--pf-text-muted)' }}>{result.message}</span>
-                      {result.taskId ? <span className="status-meta">Task ID: {result.taskId}</span> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          </Card>
-        </div>
-      ) : null}
+            {previewFeedback ? (
+              <Toast
+                title={previewFeedback.type === 'success' ? 'Preview complete' : 'Preview failed'}
+                message={previewFeedback.message}
+                variant={previewFeedback.type === 'success' ? 'success' : 'error'}
+              />
+            ) : null}
+            {sitesQuery.isError ? (
+              <Toast
+                title="Unable to load providers"
+                message={sitesQuery.error instanceof Error ? sitesQuery.error.message : 'Provider list unavailable.'}
+                variant="error"
+              />
+            ) : null}
+          </>
+        </Card>
 
-      {activeTab === 'providers' ? (
-        <div className="tab-panel single" role="tabpanel">
-          <Card title="Provider pricing" description="Live availability and point cost per provider.">
-            {sitesLoading ? (
-              <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
-            ) : sitesError ? (
-              <Toast title="Unavailable" message={sitesError} variant="error" />
-            ) : sites.length === 0 ? (
-              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No providers are currently configured.</p>
+        <Card
+          title="Preview results"
+          description="Select the assets you’d like to confirm. Points are only deducted on confirmation."
+          headerSlot={
+            selectedPreviewTasks.length > 0 ? (
+              <span className="glass-chip">Selected cost: {totalSelectedPoints} pts</span>
+            ) : null
+          }
+        >
+          <>
+            {previewEntries.length === 0 ? (
+              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
+                Previewed links will appear here with cost, provider, and status information.
+              </p>
             ) : (
-              <div style={{ display: 'grid', gap: 12 }}>
-                {sites.map((site) => {
-                  const priceDisplay =
-                    site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '—'
+              <div className="preview-results" style={{ display: 'grid', gap: 16 }}>
+                {previewEntries.map((entry, index) => {
+                  if (!entry.task) {
+                    return (
+                      <Toast
+                        key={`preview-error-${index}`}
+                        title="Preview failed"
+                        message={entry.error ?? 'Unknown error while preparing this asset.'}
+                        variant="error"
+                      />
+                    )
+                  }
+
+                  const task = entry.task
+                  const isSelected = selectedTaskIds.has(task.taskId)
+                  const createdAtLabel = dateTimeFormatter.format(new Date(task.createdAt))
+
                   return (
-                    <div
-                      key={site.site}
-                      className="bulk-result-card"
-                      style={{ background: 'rgba(15, 23, 42, 0.45)' }}
-                    >
-                      <div className="bulk-result-header" style={{ justifyContent: 'space-between' }}>
-                        <div style={{ display: 'grid', gap: 4 }}>
-                          <strong>{site.displayName ?? site.site}</strong>
-                          <span style={{ color: 'var(--pf-text-subtle)', fontSize: 13 }}>{site.site}</span>
+                    <div key={task.taskId} className="bulk-result-card" style={{ display: 'grid', gap: 12 }}>
+                      <div className="bulk-result-header" style={{ alignItems: 'flex-start', gap: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleTaskSelection(task.taskId)}
+                          aria-label={`Select task ${task.taskId}`}
+                        />
+                        <div style={{ flex: 1, display: 'grid', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <StatusBadge status={task.status} />
+                            <strong>{task.title ?? task.sourceUrl}</strong>
+                          </div>
+                          <span className="status-meta">Created: {createdAtLabel}</span>
+                          <span className="status-meta">Cost: {formatCost(task)}</span>
+                          {task.latestMessage ? <span className="status-meta">{task.latestMessage}</span> : null}
+                          {entry.error ? <span style={{ color: 'var(--pf-error)', fontSize: 13 }}>{entry.error}</span> : null}
                         </div>
-                        <span
-                          className="glass-chip"
-                          style={{
-                            background:
-                              site.active === false ? 'rgba(251, 113, 133, 0.2)' : 'rgba(74, 222, 128, 0.18)',
-                            borderColor:
-                              site.active === false ? 'rgba(251, 113, 133, 0.45)' : 'rgba(74, 222, 128, 0.45)',
-                            color: site.active === false ? '#fecaca' : '#bbf7d0',
-                          }}
-                        >
-                          {site.active === false ? 'Offline' : 'Online'}
-                        </span>
-                      </div>
-                      <div className="status-meta">
-                        <span>Price: {priceDisplay}</span>
-                        {site.minPrice != null ? (
-                          <span>
-                            Min price: {site.minPrice}
-                            {site.currency ? ` ${site.currency}` : ''}
-                          </span>
-                        ) : null}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => handleCommitSingle(task.taskId)}
+                            disabled={!isSelected || commitMutation.isPending}
+                          >
+                            Queue now
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => removePreviewTask(task.taskId)}
+                            disabled={commitMutation.isPending}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )
                 })}
               </div>
             )}
-          </Card>
-        </div>
-      ) : null}
+
+            {previewEntries.some((entry) => entry.task) ? (
+              <div className="form-actions" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleConfirmSelected}
+                  disabled={selectedTaskIds.size === 0 || commitMutation.isPending}
+                >
+                  <span className="button-content">
+                    {commitMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
+                    {commitMutation.isPending ? 'Confirming…' : 'Confirm selected orders'}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+
+            {commitFeedback ? (
+              <Toast
+                title={commitFeedback.type === 'success' ? 'Orders queued' : 'Could not queue all orders'}
+                message={commitFeedback.message}
+                variant={commitFeedback.type === 'success' ? 'success' : 'error'}
+              />
+            ) : null}
+          </>
+        </Card>
+      </div>
+
+      <div className="tab-panel split">
+        <Card title="Account summary" description="Track your available points and monthly renewal date.">
+          <>
+            {balanceQuery.isLoading ? (
+              <Toast title="Checking balance" message="Fetching your latest point balance." variant="info" />
+            ) : balanceQuery.isError ? (
+              <Toast
+                title="Balance unavailable"
+                message={balanceQuery.error instanceof Error ? balanceQuery.error.message : 'Could not load balance.'}
+                variant="error"
+              />
+            ) : balanceQuery.data ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <span style={{ fontSize: 32, fontWeight: 600 }}>{balanceQuery.data.points} pts</span>
+                <span className="status-meta">User ID: {balanceQuery.data.userId}</span>
+                <span className="status-meta">Next payment: {nextPaymentLabel}</span>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>Purchase a package to load your balance.</p>
+            )}
+          </>
+        </Card>
+
+        <Card title="Recent downloads" description="Review recently queued tasks and re-download when ready.">
+          <>
+            {tasksQuery.isLoading ? (
+              <Toast title="Loading history" message="Fetching recent stock tasks." variant="info" />
+            ) : tasksQuery.isError ? (
+              <Toast
+                title="History unavailable"
+                message={tasksQuery.error instanceof Error ? tasksQuery.error.message : 'Could not load history.'}
+                variant="error"
+              />
+            ) : historyTasks.length === 0 ? (
+              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No tasks yet. Confirm an order to populate history.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {historyTasks.map((task) => {
+                  const createdAtLabel = dateTimeFormatter.format(new Date(task.createdAt))
+                  const updatedAtLabel = dateTimeFormatter.format(new Date(task.updatedAt))
+                  const downloadHref = task.downloadUrl ?? buildDownloadUrl(task.taskId, task.responsetype ?? 'any')
+                  const canDownload = ['ready', 'completed', 'success'].includes(task.status.toLowerCase())
+                  return (
+                    <div key={task.taskId} className="bulk-result-card" style={{ display: 'grid', gap: 8 }}>
+                      <div className="bulk-result-header" style={{ justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <StatusBadge status={task.status} />
+                          <strong>{task.title ?? task.sourceUrl}</strong>
+                        </div>
+                        <span className="glass-chip">{formatCost(task)}</span>
+                      </div>
+                      <div className="status-meta" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <span>Task ID: {task.taskId}</span>
+                        {task.externalTaskId ? <span>Provider task: {task.externalTaskId}</span> : null}
+                        <span>Created: {createdAtLabel}</span>
+                        <span>Updated: {updatedAtLabel}</span>
+                      </div>
+                      {task.latestMessage ? <span className="status-meta">{task.latestMessage}</span> : null}
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {canDownload ? (
+                          <a
+                            href={downloadHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="link-button"
+                          >
+                            Download
+                          </a>
+                        ) : null}
+                        <span className="status-meta">Points spent: {formatPoints(task.costPoints)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        </Card>
+      </div>
+
+      <div className="tab-panel single">
+        <Card title="Provider catalog" description="Browse live providers, pricing, and availability.">
+          {sitesQuery.isLoading ? (
+            <Toast title="Loading providers" message="Fetching provider catalog." variant="info" />
+          ) : sitesQuery.isError ? (
+            <Toast
+              title="Unavailable"
+              message={sitesQuery.error instanceof Error ? sitesQuery.error.message : 'Could not load provider catalog.'}
+              variant="error"
+            />
+          ) : sitesQuery.data && sitesQuery.data.length > 0 ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {sitesQuery.data.map((site) => {
+                const priceDisplay =
+                  site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '—'
+                return (
+                  <div key={site.site} className="bulk-result-card" style={{ background: 'rgba(15, 23, 42, 0.45)' }}>
+                    <div className="bulk-result-header" style={{ justifyContent: 'space-between' }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <strong>{site.displayName ?? site.site}</strong>
+                        <span style={{ color: 'var(--pf-text-subtle)', fontSize: 13 }}>{site.site}</span>
+                      </div>
+                      <span
+                        className="glass-chip"
+                        style={{
+                          background:
+                            site.active === false ? 'rgba(251, 113, 133, 0.2)' : 'rgba(74, 222, 128, 0.18)',
+                          borderColor:
+                            site.active === false ? 'rgba(251, 113, 133, 0.45)' : 'rgba(74, 222, 128, 0.45)',
+                          color: site.active === false ? '#fecaca' : '#bbf7d0',
+                        }}
+                      >
+                        {site.active === false ? 'Offline' : 'Online'}
+                      </span>
+                    </div>
+                    <div className="status-meta">
+                      <span>Price: {priceDisplay}</span>
+                      {site.minPrice != null ? (
+                        <span>
+                          Min price: {site.minPrice}
+                          {site.currency ? ` ${site.currency}` : ''}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No providers are currently configured.</p>
+          )}
+        </Card>
+      </div>
     </main>
   )
 }
-
