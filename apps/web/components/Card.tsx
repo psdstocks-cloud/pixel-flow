@@ -16,24 +16,16 @@ export function Card({ title, description, footer, className, headerSlot, childr
   return (
     <section className={classes.join(' ')}>
       {(title || description || headerSlot) && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 20,
-            marginBottom: 28,
-          }}
-        >
-          <div style={{ display: 'grid', gap: 6 }}>
-            {title ? <h2 style={{ margin: 0 }}>{title}</h2> : null}
-            {description ? <p style={{ margin: 0 }}>{description}</p> : null}
+        <div className="card-header">
+          <div className="card-title-group">
+            {title ? <h2>{title}</h2> : null}
+            {description ? <p>{description}</p> : null}
           </div>
-          {headerSlot ?? null}
+          {headerSlot ? <div>{headerSlot}</div> : null}
         </div>
       )}
-      <div style={{ display: 'grid', gap: 20 }}>{children}</div>
-      {footer ? <div style={{ marginTop: 24 }}>{footer}</div> : null}
+      <div className="card-body">{children}</div>
+      {footer ? <div className="card-footer">{footer}</div> : null}
     </section>
   )
 }

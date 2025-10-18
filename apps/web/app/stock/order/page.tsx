@@ -114,6 +114,7 @@ export default function StockOrderPage() {
   const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
   const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState<'single' | 'bulk' | 'providers'>('single')
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -317,6 +318,24 @@ export default function StockOrderPage() {
   const activeTaskLabel = activeTaskId ?? latestSuccess?.taskId ?? null
   const providerCount = sites.length
 
+  const tabs = [
+    {
+      key: 'single' as const,
+      label: 'Single order',
+      summary: 'Queue and monitor individual downloads.',
+    },
+    {
+      key: 'bulk' as const,
+      label: 'Bulk order',
+      summary: 'Submit multiple URLs with shared settings.',
+    },
+    {
+      key: 'providers' as const,
+      label: 'Providers',
+      summary: 'Check pricing and availability.',
+    },
+  ]
+
   const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const lines = bulkInput
@@ -401,100 +420,152 @@ export default function StockOrderPage() {
         </div>
       </section>
 
-      <div className="glass-grid two-column" style={{ alignItems: 'start' }}>
-        <Card title="Order stock" description="Submit a stock order for a single asset.">
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18 }}>
-            <Field label="Provider" hint="Select a stock provider.">
-              <select
-                value={formValues.site}
-                onChange={(event) => setFormValues((prev) => ({ ...prev, site: event.target.value }))}
-                disabled={sitesLoading}
-              >
-                <option value="">Select a provider</option>
-                {sites.map((site) => (
-                  <option key={site.site} value={site.site}>
-                    {site.displayName ?? site.site}
-                  </option>
-                ))}
-              </select>
-            </Field>
+      <div className="tab-nav" role="tablist" aria-label="Stock order sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.key}
+            className={['tab-button', activeTab === tab.key ? 'active' : ''].filter(Boolean).join(' ')}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+            <span>{tab.summary}</span>
+          </button>
+        ))}
+      </div>
 
-            <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789).">
-              <input
-                value={formValues.id}
-                onChange={(event) => setFormValues((prev) => ({ ...prev, id: event.target.value }))}
-                placeholder="e.g. 123456789"
-              />
-            </Field>
+      {activeTab === 'single' ? (
+        <div className="tab-panel split" role="tabpanel">
+          <Card title="Single order" description="Queue a stock asset and configure delivery preferences.">
+            <>
+              <form className="form-grid" onSubmit={handleSubmit}>
+                <Field label="Provider" hint="Select a stock provider." error={formErrors.site}>
+                  <select
+                    value={formValues.site}
+                    onChange={(event) => setFormValues((prev) => ({ ...prev, site: event.target.value }))}
+                    disabled={sitesLoading}
+                  >
+                    <option value="">Select a provider</option>
+                    {sites.map((site) => (
+                      <option key={site.site} value={site.site}>
+                        {site.displayName ?? site.site}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
 
-            <Field
-              label="Direct URL"
-              hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
-              error={formErrors.url}
-            >
-              <input
-                value={formValues.url}
-                onChange={(event) => setFormValues((prev) => ({ ...prev, url: event.target.value }))}
-                placeholder="https://example.com/asset"
-              />
-            </Field>
+                <Field
+                  label="Asset ID"
+                  hint="The identifier used by the stock provider (e.g. 123456789)."
+                  error={formErrors.id}
+                >
+                  <input
+                    value={formValues.id}
+                    onChange={(event) => setFormValues((prev) => ({ ...prev, id: event.target.value }))}
+                    placeholder="e.g. 123456789"
+                    autoComplete="off"
+                  />
+                </Field>
 
-            <Field label="Response type">
-              <select
-                value={formValues.responsetype}
-                onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    responsetype: event.target.value as FormValues['responsetype'],
-                  }))
-                }
-              >
-                <option value="any">Any (auto)</option>
-                <option value="gdrive">Google Drive</option>
-                <option value="asia">Asia CDN</option>
-                <option value="mydrivelink">My Drive Link</option>
-              </select>
-            </Field>
+                <Field
+                  label="Direct URL"
+                  hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
+                  error={formErrors.url}
+                >
+                  <input
+                    value={formValues.url}
+                    onChange={(event) => setFormValues((prev) => ({ ...prev, url: event.target.value }))}
+                    placeholder="https://example.com/asset"
+                    autoComplete="off"
+                  />
+                </Field>
 
-            <Field label="Notification channel" hint="Optional webhook or email for completion updates.">
-              <input
-                value={formValues.notificationChannel}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, notificationChannel: event.target.value }))
-                }
-                placeholder="https://hooks.slack.com/... or email@example.com"
-              />
-            </Field>
+                <Field label="Response type" hint="Prefer a specific delivery destination?">
+                  <select
+                    value={formValues.responsetype}
+                    onChange={(event) =>
+                      setFormValues((prev) => ({
+                        ...prev,
+                        responsetype: event.target.value as FormValues['responsetype'],
+                      }))
+                    }
+                  >
+                    <option value="any">Any (auto)</option>
+                    <option value="gdrive">Google Drive</option>
+                    <option value="asia">Asia CDN</option>
+                    <option value="mydrivelink">My Drive Link</option>
+                  </select>
+                </Field>
 
-            <button className="primary" type="submit" disabled={createOrderMutation.isPending}>
-              {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
-            </button>
-            {sitesLoading ? (
-              <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
-            ) : null}
-            {sitesError ? (
-              <Toast title="Could not load providers" message={sitesError} variant="error" />
-            ) : null}
-          </form>
-        </Card>
+                <Field
+                  label="Notification channel"
+                  hint="Optional webhook or email for completion updates."
+                  error={formErrors.notificationChannel}
+                >
+                  <input
+                    value={formValues.notificationChannel}
+                    onChange={(event) =>
+                      setFormValues((prev) => ({ ...prev, notificationChannel: event.target.value }))
+                    }
+                    placeholder="https://hooks.slack.com/... or email@example.com"
+                    autoComplete="off"
+                  />
+                </Field>
 
-        <Card
-          title="Task status"
-          description="Monitor progress, download results, and review recent activity."
-          headerSlot={
-            activeTaskLabel ? <span className="glass-chip">Task {activeTaskLabel.slice(0, 10)}…</span> : null
-          }
-        >
-          {latestError ? (
-            <Toast title="Could not queue order" message={latestError.message} variant="error" />
-          ) : showStatusPanel ? (
-            <div style={{ display: 'grid', gap: 20 }}>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <StatusBadge status={currentStatus ?? 'queued'} />
-                {activeTaskLabel ? (
-                  <span style={{ color: 'var(--pf-text-subtle)' }}>Task ID: {activeTaskLabel}</span>
-                ) : null}
+                <div className="form-actions">
+                  <button className="primary" type="submit" disabled={createOrderMutation.isPending}>
+                    <span className="button-content">
+                      {createOrderMutation.isPending ? (
+                        <span className="button-spinner" aria-hidden="true" />
+                      ) : null}
+                      {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
+                    </span>
+                  </button>
+                  {detectionPreview ? (
+                    <span className="glass-chip" aria-live="polite">
+                      Suggested: {detectionPreview.site}
+                      {detectionPreview.id ? ` · ${detectionPreview.id}` : ''}
+                    </span>
+                  ) : null}
+                </div>
+              </form>
+
+              {sitesLoading ? (
+                <Toast title="Loading providers" message="Fetching sites from the API." variant="info" />
+              ) : null}
+              {sitesError ? (
+                <Toast title="Could not load providers" message={sitesError} variant="error" />
+              ) : null}
+            </>
+          </Card>
+
+          <Card
+            title="Task status"
+            description="Monitor progress, download results, and review recent activity."
+            headerSlot={
+              activeTaskLabel ? <span className="glass-chip">Task {activeTaskLabel.slice(0, 10)}…</span> : null
+            }
+          >
+            {latestError ? (
+              <Toast title="Could not queue order" message={latestError.message} variant="error" />
+            ) : showStatusPanel ? (
+              <>
+                <div className="status-badge-row">
+                  <StatusBadge status={resolvedStatus ?? 'queued'} />
+                  {pollingEnabled || isStatusFetching ? (
+                    <span className="polling-indicator" title="Polling for updates" aria-hidden="true" />
+                  ) : null}
+                  <div className="status-meta">
+                    {activeTaskLabel ? <span>Task ID: {activeTaskLabel}</span> : null}
+                    {queuedAt ? <span>Queued: {queuedAt}</span> : null}
+                    {lastUpdated ? <span>Last update: {lastUpdated}</span> : null}
+                  </div>
+                </div>
+
                 {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
+
                 {typeof progressValue === 'number' ? (
                   <div style={{ display: 'grid', gap: 8 }}>
                     <div
@@ -521,210 +592,230 @@ export default function StockOrderPage() {
                     <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>{progressValue}%</span>
                   </div>
                 ) : null}
+
                 {downloadHref ? (
                   <a
                     href={downloadHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: 'var(--pf-primary)', fontWeight: 600 }}
+                    className="link-button"
                   >
                     Download latest files
                   </a>
                 ) : null}
-                {lastUpdated ? (
-                  <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>Last update: {lastUpdated}</span>
-                ) : null}
-              </div>
 
-              <div className="status-timeline">
-                {timelineSteps.map((step, index) => {
-                  const isReached = index <= timelineActiveIndex
-                  const indicatorClassName = ['status-indicator', isReached ? 'active' : ''].join(' ')
-                  const tone = isErrorStatus && index >= timelineActiveIndex ? 'var(--pf-error)' : undefined
+                <div className="status-timeline">
+                  {timelineSteps.map((step, index) => {
+                    const isReached = index <= timelineActiveIndex
+                    const indicatorClassName = ['status-indicator', isReached ? 'active' : ''].filter(Boolean).join(' ')
+                    const tone = isErrorStatus && index >= timelineActiveIndex ? 'var(--pf-error)' : undefined
+                    return (
+                      <div className="status-step" key={step.key}>
+                        <div
+                          className={indicatorClassName}
+                          style={tone ? { borderColor: tone, boxShadow: `0 0 14px ${tone}`, background: tone } : undefined}
+                        />
+                        <div className="status-content">
+                          <strong>{step.title}</strong>
+                          <span>{step.description}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="status-actions">
+                  {pollingEnabled ? (
+                    <button type="button" className="secondary" onClick={() => setPollingEnabled(false)}>
+                      Pause polling
+                    </button>
+                  ) : null}
+                  {activeTaskId ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        if (!activeTaskId) return
+                        if (!pollingEnabled) setPollingEnabled(true)
+                        orderStatusQuery.refetch()
+                      }}
+                      disabled={isStatusFetching}
+                    >
+                      <span className="button-content">
+                        {isStatusFetching ? <span className="button-spinner" aria-hidden="true" /> : null}
+                        {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+
+                {isStatusLoading ? (
+                  <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
+                ) : null}
+                {!pollingEnabled && activeTaskId ? (
+                  <Toast
+                    title="Polling paused"
+                    message="Automatic updates are paused after reaching a final state. Use refresh to check again."
+                    variant="info"
+                  />
+                ) : null}
+                {statusError ? <Toast title="Status unavailable" message={statusError} variant="error" /> : null}
+              </>
+            ) : latestSuccess ? (
+              <>
+                <div className="status-badge-row">
+                  <StatusBadge status={latestSuccess.status ?? 'queued'} />
+                  <div className="status-meta">
+                    {latestSuccess.taskId ? <span>Task ID: {latestSuccess.taskId}</span> : null}
+                    {queuedAt ? <span>Queued: {queuedAt}</span> : null}
+                  </div>
+                </div>
+                {latestSuccess.message ? <p style={{ margin: 0 }}>{latestSuccess.message}</p> : null}
+                <Toast title="Order queued" message="Waiting for the first status update." variant="success" />
+              </>
+            ) : (
+              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
+                Queue a stock order to start tracking status updates.
+              </p>
+            )}
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === 'bulk' ? (
+        <div className="tab-panel single" role="tabpanel">
+          <Card
+            title="Bulk queue"
+            description="Submit multiple asset URLs in one go. We’ll auto-detect supported providers when possible."
+          >
+            <>
+              <form className="form-grid" onSubmit={handleBulkSubmit}>
+                <Field label="Asset URLs" hint="Enter one URL per line.">
+                  <textarea
+                    value={bulkInput}
+                    onChange={(event) => setBulkInput(event.target.value)}
+                    rows={6}
+                    placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
+                    style={{ resize: 'vertical' }}
+                  />
+                </Field>
+
+                <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                  <Field label="Response type">
+                    <select
+                      value={bulkResponseType}
+                      onChange={(event) => setBulkResponseType(event.target.value as FormValues['responsetype'])}
+                    >
+                      <option value="any">Any (auto)</option>
+                      <option value="gdrive">Google Drive</option>
+                      <option value="asia">Asia CDN</option>
+                      <option value="mydrivelink">My Drive Link</option>
+                    </select>
+                  </Field>
+
+                  <Field label="Notification channel" hint="Optional email or webhook for all queued tasks.">
+                    <input
+                      value={bulkNotificationChannel}
+                      onChange={(event) => setBulkNotificationChannel(event.target.value)}
+                      placeholder="https://hooks.slack.com/... or email@example.com"
+                      autoComplete="off"
+                    />
+                  </Field>
+                </div>
+
+                <div className="form-actions">
+                  <button type="submit" className="primary" disabled={bulkSubmitting}>
+                    <span className="button-content">
+                      {bulkSubmitting ? <span className="button-spinner" aria-hidden="true" /> : null}
+                      {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
+                    </span>
+                  </button>
+                  <span className="glass-chip">Up to 5 URLs per batch</span>
+                </div>
+              </form>
+
+              {bulkResults.length > 0 ? (
+                <div className="bulk-results" aria-live="polite">
+                  {bulkResults.map((result) => (
+                    <div
+                      className="bulk-result-card"
+                      key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
+                    >
+                      <div className="bulk-result-header">
+                        <span
+                          className={`bulk-result-icon ${result.status === 'success' ? 'success' : 'error'}`}
+                          aria-hidden="true"
+                        >
+                          {result.status === 'success' ? '✓' : '✕'}
+                        </span>
+                        <strong>{result.url}</strong>
+                      </div>
+                      <span style={{ color: 'var(--pf-text-muted)' }}>{result.message}</span>
+                      {result.taskId ? <span className="status-meta">Task ID: {result.taskId}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === 'providers' ? (
+        <div className="tab-panel single" role="tabpanel">
+          <Card title="Provider pricing" description="Live availability and point cost per provider.">
+            {sitesLoading ? (
+              <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
+            ) : sitesError ? (
+              <Toast title="Unavailable" message={sitesError} variant="error" />
+            ) : sites.length === 0 ? (
+              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No providers are currently configured.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {sites.map((site) => {
+                  const priceDisplay =
+                    site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '—'
                   return (
-                    <div className="status-step" key={step.key}>
-                      <div
-                        className={indicatorClassName}
-                        style={tone ? { borderColor: tone, boxShadow: `0 0 14px ${tone}`, background: tone } : undefined}
-                      />
-                      <div className="status-content">
-                        <strong>{step.title}</strong>
-                        <span>{step.description}</span>
+                    <div
+                      key={site.site}
+                      className="bulk-result-card"
+                      style={{ background: 'rgba(15, 23, 42, 0.45)' }}
+                    >
+                      <div className="bulk-result-header" style={{ justifyContent: 'space-between' }}>
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <strong>{site.displayName ?? site.site}</strong>
+                          <span style={{ color: 'var(--pf-text-subtle)', fontSize: 13 }}>{site.site}</span>
+                        </div>
+                        <span
+                          className="glass-chip"
+                          style={{
+                            background:
+                              site.active === false ? 'rgba(251, 113, 133, 0.2)' : 'rgba(74, 222, 128, 0.18)',
+                            borderColor:
+                              site.active === false ? 'rgba(251, 113, 133, 0.45)' : 'rgba(74, 222, 128, 0.45)',
+                            color: site.active === false ? '#fecaca' : '#bbf7d0',
+                          }}
+                        >
+                          {site.active === false ? 'Offline' : 'Online'}
+                        </span>
+                      </div>
+                      <div className="status-meta">
+                        <span>Price: {priceDisplay}</span>
+                        {site.minPrice != null ? (
+                          <span>
+                            Min price: {site.minPrice}
+                            {site.currency ? ` ${site.currency}` : ''}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   )
                 })}
               </div>
-
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                {pollingEnabled ? (
-                  <button type="button" className="secondary" onClick={() => setPollingEnabled(false)}>
-                    Pause polling
-                  </button>
-                ) : null}
-                {activeTaskId ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      if (!activeTaskId) return
-                      if (!pollingEnabled) setPollingEnabled(true)
-                      orderStatusQuery.refetch()
-                    }}
-                    disabled={isStatusFetching}
-                  >
-                    {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
-                  </button>
-                ) : null}
-              </div>
-
-              {isStatusLoading ? (
-                <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
-              ) : null}
-              {!pollingEnabled && activeTaskId ? (
-                <Toast
-                  title="Polling paused"
-                  message="Automatic updates are paused after reaching a final state. Use refresh to check again."
-                  variant="info"
-                />
-              ) : null}
-              {statusError ? <Toast title="Status unavailable" message={statusError} variant="error" /> : null}
-            </div>
-          ) : (
-            <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
-              Queue a stock order to start tracking status updates.
-            </p>
-          )}
-        </Card>
-      </div>
-
-      <div className="glass-grid" style={{ alignItems: 'start' }}>
-        <Card
-          title="Bulk queue"
-          description="Submit multiple asset URLs in one go. We’ll auto-detect supported providers when possible."
-        >
-          <form onSubmit={handleBulkSubmit} className="bulk-section">
-            <Field label="Asset URLs" hint="Enter one URL per line.">
-              <textarea
-                value={bulkInput}
-                onChange={(event) => setBulkInput(event.target.value)}
-                rows={6}
-                placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
-                style={{ resize: 'vertical' }}
-              />
-            </Field>
-
-            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-              <Field label="Response type">
-                <select
-                  value={bulkResponseType}
-                  onChange={(event) => setBulkResponseType(event.target.value as FormValues['responsetype'])}
-                >
-                  <option value="any">Any (auto)</option>
-                  <option value="gdrive">Google Drive</option>
-                  <option value="asia">Asia CDN</option>
-                  <option value="mydrivelink">My Drive Link</option>
-                </select>
-              </Field>
-
-              <Field label="Notification channel" hint="Optional email or webhook for all queued tasks.">
-                <input
-                  value={bulkNotificationChannel}
-                  onChange={(event) => setBulkNotificationChannel(event.target.value)}
-                  placeholder="https://hooks.slack.com/... or email@example.com"
-                />
-              </Field>
-            </div>
-
-            <button type="submit" className="primary" disabled={bulkSubmitting}>
-              {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
-            </button>
-          </form>
-
-          {bulkResults.length > 0 ? (
-            <div style={{ display: 'grid', gap: 12 }}>
-              {bulkResults.map((result) => (
-                <div
-                  key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
-                  style={{
-                    borderRadius: 16,
-                    padding: 16,
-                    border: '1px solid rgba(255,255,255,0.16)',
-                    background: result.status === 'success' ? 'rgba(74, 222, 128, 0.16)' : 'rgba(251, 113, 133, 0.16)',
-                    display: 'grid',
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <StatusBadge status={result.status === 'success' ? 'completed' : 'error'} />
-                    <strong style={{ color: 'var(--pf-text)' }}>{result.url}</strong>
-                  </div>
-                  <span style={{ color: 'var(--pf-text-muted)' }}>{result.message}</span>
-                  {result.taskId ? (
-                    <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>Task ID: {result.taskId}</span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </Card>
-
-        <Card title="Provider pricing" description="Live availability and point cost per provider.">
-          {sitesLoading ? (
-            <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
-          ) : sitesError ? (
-            <Toast title="Unavailable" message={sitesError} variant="error" />
-          ) : sites.length === 0 ? (
-            <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No providers are currently configured.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: 12 }}>
-              {sites.map((site) => {
-                const priceDisplay =
-                  site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '—'
-                return (
-                  <div
-                    key={site.site}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '14px 18px',
-                      borderRadius: 16,
-                      border: '1px solid rgba(255,255,255,0.18)',
-                      background: 'rgba(15,23,42,0.55)',
-                    }}
-                  >
-                    <div style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontWeight: 600, color: 'var(--pf-text)' }}>{site.displayName ?? site.site}</span>
-                      <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>{site.site}</span>
-                    </div>
-                    <div style={{ display: 'grid', gap: 6, textAlign: 'right' }}>
-                      <span
-                        className="glass-chip"
-                        style={{
-                          background: site.active === false ? 'rgba(251, 113, 133, 0.2)' : 'rgba(74, 222, 128, 0.18)',
-                          borderColor: site.active === false ? 'rgba(251, 113, 133, 0.45)' : 'rgba(74, 222, 128, 0.45)',
-                          color: site.active === false ? '#fecaca' : '#bbf7d0',
-                          justifySelf: 'flex-end',
-                        }}
-                      >
-                        {site.active === false ? 'Offline' : 'Online'}
-                      </span>
-                      <span style={{ color: 'var(--pf-text)' }}>Price: {priceDisplay}</span>
-                      {site.minPrice != null ? (
-                        <span style={{ fontSize: 12, color: 'var(--pf-text-subtle)' }}>
-                          Min price: {site.minPrice}
-                          {site.currency ? ` ${site.currency}` : ''}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </Card>
-      </div>
+            )}
+          </Card>
+        </div>
+      ) : null}
     </main>
   )
 }
