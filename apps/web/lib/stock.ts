@@ -41,9 +41,7 @@ async function apiFetch<T>(
 ): Promise<T> {
   const url = `${API_BASE}/api${endpoint}`;
   const headers = new Headers(options.headers || {});
-  
-  // *** THIS IS THE FIX ***
-  // The backend expects the API key in the 'X-Api-Key' header.
+
   if (API_KEY) {
     headers.set('X-Api-Key', API_KEY);
   }
@@ -57,7 +55,7 @@ async function apiFetch<T>(
       if (errorBody && typeof errorBody.message === 'string') {
         errorMessage = errorBody.message;
       }
-    } catch (e) {
+    } catch {
       // Ignore if response is not JSON
     }
     throw new Error(errorMessage);
@@ -97,3 +95,4 @@ export async function getOrderStatus(
 }
 
 export { detectSiteAndIdFromUrl };
+

@@ -716,3 +716,4 @@ export default function StockOrderPage() {
     </main>
   )
 }
+
