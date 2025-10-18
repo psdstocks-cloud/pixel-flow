@@ -1,14 +1,13 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "rootDirectory": ".",
   "build": {
     "builder": "NIXPACKS",
-    "installCommand": "npm ci",
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npm --prefix apps/api run start",
-    "healthcheckPath": "/health",
+    "startCommand": "npm run migrate --workspace=@pixel-flow/database && npm run start:api",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE"
   }
 }
