@@ -234,6 +234,8 @@ async function fetchInfoForItem(item: MultiLinkItem, responsetype?: string) {
   const path = hasSiteId ? `/stockinfo/${encodeURIComponent(item.site!)}/${encodeURIComponent(item.id!)}` : '/stockinfo'
   const queryParams: Record<string, string | number | boolean | undefined> = {}
   if (item.url) queryParams.url = item.url
+  if (item.site) queryParams.site = item.site
+  if (item.id) queryParams.id = item.id
   if (responsetype) queryParams.responsetype = responsetype
   const url = buildUrl(path, queryParams)
   const response = await fetch(url, { headers: withApiKey() })
@@ -242,6 +244,15 @@ async function fetchInfoForItem(item: MultiLinkItem, responsetype?: string) {
     throw new Error(text || `Failed to fetch stock info (status ${response.status}).`)
   }
   const data = (await response.json()) as Record<string, unknown>
+  if (!determineCostPoints(data) && process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.warn('[stock] Missing cost data for item', {
+      site: item.site,
+      id: item.id,
+      url: item.url,
+      response: data,
+    })
+  }
   return data
 }
 
