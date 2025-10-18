@@ -17,7 +17,6 @@ import {
   type OrderCommitResponse,
   type PreviewRequestItem,
   type PreviewResponse,
-  type StockBalance,
   type StockOrderPayload,
   type StockSite,
   type StockStatusResponse,
@@ -227,7 +226,7 @@ export default function StockOrderPage() {
       if (data.balance) {
         queryClient.setQueryData(queries.balance(USER_ID), data.balance)
       }
-      queryClient.invalidateQueries(queries.tasks(USER_ID))
+      queryClient.invalidateQueries({ queryKey: queries.tasks(USER_ID) })
       if (data.failures.length > 0) {
         const failureSummary = data.failures
           .map((failure) => `${failure.taskId.slice(0, 8)}…: ${failure.error}`)
@@ -704,7 +703,7 @@ export default function StockOrderPage() {
                       <Toast
                         title="Insufficient balance"
                         message="Reduce selection or top up points to continue."
-                        variant="warning"
+                        variant="error"
                       />
                     ) : null}
                   </div>
