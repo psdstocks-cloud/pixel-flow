@@ -277,6 +277,51 @@ export default function StockOrderPage() {
     : queuedAt
 
   const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
+  const normalizedStatus = (currentStatus ?? 'queued').toLowerCase()
+  const statusAliases: Record<string, string> = {
+    pending: 'queued',
+    queued: 'queued',
+    running: 'processing',
+    processing: 'processing',
+    inprogress: 'processing',
+    ready: 'ready',
+    completed: 'completed',
+    success: 'completed',
+  }
+  const resolvedStatus = statusAliases[normalizedStatus] ?? normalizedStatus
+  const isErrorStatus = ['failed', 'error', 'cancelled', 'canceled'].includes(normalizedStatus)
+  const timelineSteps = [
+    {
+      key: 'queued',
+      title: 'Queued',
+      description: 'We registered your order and queued it with the provider.',
+    },
+    {
+      key: 'processing',
+      title: 'Processing',
+      description: 'The provider is gathering the asset and validating access.',
+    },
+    {
+      key: 'ready',
+      title: 'Ready',
+      description: 'Download link is ready whenever you are.',
+    },
+    {
+      key: 'completed',
+      title: 'Completed',
+      description: 'The asset has been delivered successfully.',
+    },
+  ] as const
+  const processingIndex = timelineSteps.findIndex((step) => step.key === 'processing')
+  const timelineActiveIndex = (() => {
+    if (isErrorStatus) return processingIndex >= 0 ? processingIndex : 0
+    const idx = timelineSteps.findIndex((step) => step.key === resolvedStatus)
+    return idx >= 0 ? idx : 0
+  })()
+  const progressValue =
+    typeof currentProgress === 'number' ? Math.round(Math.max(0, Math.min(100, currentProgress))) : null
+  const activeTaskLabel = activeTaskId ?? latestSuccess?.taskId ?? null
+  const providerCount = sites.length
 
   const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -348,25 +393,28 @@ export default function StockOrderPage() {
   }
 
   return (
-    <main style={{ padding: '48px 56px', display: 'grid', gap: 32 }}>
-      <SectionHeader
-        title="Stock Order"
-        subtitle="Queue and track stock asset downloads across your connected providers."
-      />
-      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
-        <Card
-          title="Order stock"
-          description="Submit a stock order for a single asset."
-        >
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
+    <main>
+      <section className="order-hero">
+        <span className="hero-badge">Stock workflow</span>
+        <h1>Download stock assets in a glass-smooth flow.</h1>
+        <p className="hero-description">
+          Queue single or bulk orders, track real-time status, and fetch downloads without leaving the dashboard.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <span className="glass-chip">Providers live: {providerCount}</span>
+          <span className="glass-chip">Auto-detect URLs</span>
+          <span className="glass-chip">Choose CDN mirror</span>
+        </div>
+      </section>
+
+      <div className="glass-grid two-column" style={{ alignItems: 'start' }}>
+        <Card title="Order stock" description="Submit a stock order for a single asset.">
+          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18 }}>
             <Field label="Provider" hint="Select a stock provider.">
               <select
                 value={formValues.site}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, site: event.target.value }))
-                }
+                onChange={(event) => setFormValues((prev) => ({ ...prev, site: event.target.value }))}
                 disabled={sitesLoading}
-                style={{ width: '100%', padding: '10px 12px' }}
               >
                 <option value="">Select a provider</option>
                 {sites.map((site) => (
@@ -380,11 +428,8 @@ export default function StockOrderPage() {
             <Field label="Asset ID" hint="The identifier used by the stock provider (e.g. 123456789).">
               <input
                 value={formValues.id}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, id: event.target.value }))
-                }
+                onChange={(event) => setFormValues((prev) => ({ ...prev, id: event.target.value }))}
                 placeholder="e.g. 123456789"
-                style={{ width: '100%', padding: '10px 12px' }}
               />
             </Field>
 
@@ -395,11 +440,8 @@ export default function StockOrderPage() {
             >
               <input
                 value={formValues.url}
-                onChange={(event) =>
-                  setFormValues((prev) => ({ ...prev, url: event.target.value }))
-                }
+                onChange={(event) => setFormValues((prev) => ({ ...prev, url: event.target.value }))}
                 placeholder="https://example.com/asset"
-                style={{ width: '100%', padding: '10px 12px' }}
               />
             </Field>
 
@@ -412,7 +454,6 @@ export default function StockOrderPage() {
                     responsetype: event.target.value as FormValues['responsetype'],
                   }))
                 }
-                style={{ width: '100%', padding: '10px 12px' }}
               >
                 <option value="any">Any (auto)</option>
                 <option value="gdrive">Google Drive</option>
@@ -421,37 +462,17 @@ export default function StockOrderPage() {
               </select>
             </Field>
 
-            <Field
-              label="Notification channel"
-              hint="Optional webhook or email for completion updates."
-            >
+            <Field label="Notification channel" hint="Optional webhook or email for completion updates.">
               <input
                 value={formValues.notificationChannel}
                 onChange={(event) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    notificationChannel: event.target.value,
-                  }))
+                  setFormValues((prev) => ({ ...prev, notificationChannel: event.target.value }))
                 }
                 placeholder="https://hooks.slack.com/... or email@example.com"
-                style={{ width: '100%', padding: '10px 12px' }}
               />
             </Field>
 
-            <button
-              className="primary"
-              type="submit"
-              disabled={createOrderMutation.isPending}
-              style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: '#0ea5e9',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
-              }}
-            >
+            <button className="primary" type="submit" disabled={createOrderMutation.isPending}>
               {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
             </button>
             {sitesLoading ? (
@@ -466,78 +487,105 @@ export default function StockOrderPage() {
         <Card
           title="Task status"
           description="Monitor progress, download results, and review recent activity."
+          headerSlot={
+            activeTaskLabel ? <span className="glass-chip">Task {activeTaskLabel.slice(0, 10)}…</span> : null
+          }
         >
           {latestError ? (
             <Toast title="Could not queue order" message={latestError.message} variant="error" />
           ) : showStatusPanel ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <StatusBadge status={currentStatus ?? 'queued'} />
-                  <div>
-                    <strong>Task ID:</strong> {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
-                  </div>
-                </div>
+            <div style={{ display: 'grid', gap: 20 }}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <StatusBadge status={currentStatus ?? 'queued'} />
+                {activeTaskLabel ? (
+                  <span style={{ color: 'var(--pf-text-subtle)' }}>Task ID: {activeTaskLabel}</span>
+                ) : null}
                 {currentMessage ? <p style={{ margin: 0 }}>{currentMessage as string}</p> : null}
-                {typeof currentProgress === 'number' ? (
-                  <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
+                {typeof progressValue === 'number' ? (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div
+                      style={{
+                        height: 8,
+                        borderRadius: 999,
+                        background: 'rgba(255,255,255,0.08)',
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          width: `${progressValue}%`,
+                          borderRadius: 999,
+                          background:
+                            'linear-gradient(90deg, rgba(56, 189, 248, 0.85), rgba(168, 85, 247, 0.8))',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>{progressValue}%</span>
+                  </div>
                 ) : null}
                 {downloadHref ? (
                   <a
                     href={downloadHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: '#0ea5e9', fontWeight: 600 }}
+                    style={{ color: 'var(--pf-primary)', fontWeight: 600 }}
                   >
                     Download latest files
                   </a>
                 ) : null}
                 {lastUpdated ? (
-                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-                    Last update: {lastUpdated}
-                  </p>
+                  <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>Last update: {lastUpdated}</span>
                 ) : null}
               </div>
+
+              <div className="status-timeline">
+                {timelineSteps.map((step, index) => {
+                  const isReached = index <= timelineActiveIndex
+                  const indicatorClassName = ['status-indicator', isReached ? 'active' : ''].join(' ')
+                  const tone = isErrorStatus && index >= timelineActiveIndex ? 'var(--pf-error)' : undefined
+                  return (
+                    <div className="status-step" key={step.key}>
+                      <div
+                        className={indicatorClassName}
+                        style={tone ? { borderColor: tone, boxShadow: `0 0 14px ${tone}`, background: tone } : undefined}
+                      />
+                      <div className="status-content">
+                        <strong>{step.title}</strong>
+                        <span>{step.description}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 {pollingEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => setPollingEnabled(false)}
-                    style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
-                  >
+                  <button type="button" className="secondary" onClick={() => setPollingEnabled(false)}>
                     Pause polling
                   </button>
                 ) : null}
                 {activeTaskId ? (
                   <button
                     type="button"
+                    className="secondary"
                     onClick={() => {
                       if (!activeTaskId) return
-                      if (!pollingEnabled) {
-                        setPollingEnabled(true)
-                      }
+                      if (!pollingEnabled) setPollingEnabled(true)
                       orderStatusQuery.refetch()
                     }}
                     disabled={isStatusFetching}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #0ea5e9',
-                      background: '#e0f2fe',
-                      color: '#0369a1',
-                      fontWeight: 600,
-                    }}
                   >
                     {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
                   </button>
                 ) : null}
               </div>
+
               {isStatusLoading ? (
-                <Toast
-                  title="Refreshing status"
-                  message="Polling the task for updates."
-                  variant="info"
-                />
+                <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
               ) : null}
               {!pollingEnabled && activeTaskId ? (
                 <Toast
@@ -546,57 +594,37 @@ export default function StockOrderPage() {
                   variant="info"
                 />
               ) : null}
-              {statusError ? (
-                <Toast title="Status unavailable" message={statusError} variant="error" />
-              ) : null}
-            </div>
-          ) : latestSuccess ? (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <StatusBadge status={latestSuccess.status ?? 'queued'} />
-              <div>
-                <strong>Task ID:</strong>{' '}
-                {latestSuccess.taskId ?? 'Awaiting identifier'}
-              </div>
-              {latestSuccess.message ? (
-                <p style={{ margin: 0 }}>{latestSuccess.message}</p>
-              ) : null}
-              {queuedAt ? (
-                <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>Queued at: {queuedAt}</p>
-              ) : null}
-              <Toast title="Order queued" message="Waiting for the first status update." variant="success" />
+              {statusError ? <Toast title="Status unavailable" message={statusError} variant="error" /> : null}
             </div>
           ) : (
-            <p style={{ color: '#94a3b8', margin: 0 }}>
-              Submit an order to see its status here.
+            <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
+              Queue a stock order to start tracking status updates.
             </p>
           )}
         </Card>
       </div>
 
-      <div className="grid two-column" style={{ alignItems: 'start', gap: 24 }}>
+      <div className="glass-grid" style={{ alignItems: 'start' }}>
         <Card
           title="Bulk queue"
-          description="Submit multiple asset URLs at once. We’ll auto-detect supported providers when possible."
+          description="Submit multiple asset URLs in one go. We’ll auto-detect supported providers when possible."
         >
-          <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 16 }}>
+          <form onSubmit={handleBulkSubmit} className="bulk-section">
             <Field label="Asset URLs" hint="Enter one URL per line.">
               <textarea
                 value={bulkInput}
                 onChange={(event) => setBulkInput(event.target.value)}
                 rows={6}
                 placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
-                style={{ width: '100%', padding: '10px 12px', resize: 'vertical' }}
+                style={{ resize: 'vertical' }}
               />
             </Field>
 
-            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
               <Field label="Response type">
                 <select
                   value={bulkResponseType}
-                  onChange={(event) =>
-                    setBulkResponseType(event.target.value as FormValues['responsetype'])
-                  }
-                  style={{ width: '100%', padding: '10px 12px' }}
+                  onChange={(event) => setBulkResponseType(event.target.value as FormValues['responsetype'])}
                 >
                   <option value="any">Any (auto)</option>
                   <option value="gdrive">Google Drive</option>
@@ -610,50 +638,36 @@ export default function StockOrderPage() {
                   value={bulkNotificationChannel}
                   onChange={(event) => setBulkNotificationChannel(event.target.value)}
                   placeholder="https://hooks.slack.com/... or email@example.com"
-                  style={{ width: '100%', padding: '10px 12px' }}
                 />
               </Field>
             </div>
 
-            <button
-              type="submit"
-              disabled={bulkSubmitting}
-              style={{
-                padding: '12px 18px',
-                borderRadius: 12,
-                background: '#0f766e',
-                color: '#fff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: bulkSubmitting ? 'not-allowed' : 'pointer',
-              }}
-            >
+            <button type="submit" className="primary" disabled={bulkSubmitting}>
               {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
             </button>
           </form>
 
           {bulkResults.length > 0 ? (
-            <div style={{ marginTop: 18, display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
               {bulkResults.map((result) => (
                 <div
                   key={`${result.url}-${result.message}-${result.status}-${result.taskId ?? 'none'}`}
                   style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 10,
-                    padding: 12,
-                    background: result.status === 'success' ? '#ecfdf5' : '#fef2f2',
-                    color: result.status === 'success' ? '#065f46' : '#991b1b',
+                    borderRadius: 16,
+                    padding: 16,
+                    border: '1px solid rgba(255,255,255,0.16)',
+                    background: result.status === 'success' ? 'rgba(74, 222, 128, 0.16)' : 'rgba(251, 113, 133, 0.16)',
                     display: 'grid',
-                    gap: 6,
+                    gap: 8,
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <StatusBadge status={result.status === 'success' ? 'completed' : 'error'} />
-                    <span style={{ fontWeight: 600 }}>{result.url}</span>
+                    <strong style={{ color: 'var(--pf-text)' }}>{result.url}</strong>
                   </div>
-                  <span>{result.message}</span>
+                  <span style={{ color: 'var(--pf-text-muted)' }}>{result.message}</span>
                   {result.taskId ? (
-                    <span style={{ fontSize: 13 }}>Task ID: {result.taskId}</span>
+                    <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>Task ID: {result.taskId}</span>
                   ) : null}
                 </div>
               ))}
@@ -661,23 +675,18 @@ export default function StockOrderPage() {
           ) : null}
         </Card>
 
-        <Card
-          title="Provider pricing"
-          description="Live availability and point cost per provider."
-        >
+        <Card title="Provider pricing" description="Live availability and point cost per provider.">
           {sitesLoading ? (
             <Toast title="Loading pricing" message="Fetching provider catalog." variant="info" />
           ) : sitesError ? (
             <Toast title="Unavailable" message={sitesError} variant="error" />
           ) : sites.length === 0 ? (
-            <p style={{ margin: 0, color: '#94a3b8' }}>No providers are currently configured.</p>
+            <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>No providers are currently configured.</p>
           ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
               {sites.map((site) => {
                 const priceDisplay =
-                  site.price != null
-                    ? `${site.price}${site.currency ? ` ${site.currency}` : ''}`
-                    : '—'
+                  site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '—'
                 return (
                   <div
                     key={site.site}
@@ -685,32 +694,31 @@ export default function StockOrderPage() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '8px 12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 10,
-                      background: '#fff',
+                      padding: '14px 18px',
+                      borderRadius: 16,
+                      border: '1px solid rgba(255,255,255,0.18)',
+                      background: 'rgba(15,23,42,0.55)',
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 600 }}>{site.displayName ?? site.site}</span>
-                      <span style={{ fontSize: 13, color: '#64748b' }}>{site.site}</span>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--pf-text)' }}>{site.displayName ?? site.site}</span>
+                      <span style={{ fontSize: 13, color: 'var(--pf-text-subtle)' }}>{site.site}</span>
                     </div>
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'grid', gap: 6, textAlign: 'right' }}>
                       <span
+                        className="glass-chip"
                         style={{
-                          display: 'inline-block',
-                          padding: '4px 10px',
-                          borderRadius: 999,
-                          background: site.active === false ? '#fee2e2' : '#f1f5f9',
-                          color: site.active === false ? '#b91c1c' : '#0f172a',
-                          fontWeight: 600,
+                          background: site.active === false ? 'rgba(251, 113, 133, 0.2)' : 'rgba(74, 222, 128, 0.18)',
+                          borderColor: site.active === false ? 'rgba(251, 113, 133, 0.45)' : 'rgba(74, 222, 128, 0.45)',
+                          color: site.active === false ? '#fecaca' : '#bbf7d0',
+                          justifySelf: 'flex-end',
                         }}
                       >
                         {site.active === false ? 'Offline' : 'Online'}
                       </span>
-                      <span style={{ fontSize: 13 }}>Price: {priceDisplay}</span>
+                      <span style={{ color: 'var(--pf-text)' }}>Price: {priceDisplay}</span>
                       {site.minPrice != null ? (
-                        <span style={{ fontSize: 12, color: '#64748b' }}>
+                        <span style={{ fontSize: 12, color: 'var(--pf-text-subtle)' }}>
                           Min price: {site.minPrice}
                           {site.currency ? ` ${site.currency}` : ''}
                         </span>
