@@ -1,54 +1,49 @@
 'use client'
 
 import type { CSSProperties, FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Field, StatusBadge, Toast } from '../../../components'
 import {
+  commitOrder,
   confirmOrder,
-  createOrder,
+  detectSiteAndIdFromUrl,
+  fetchBalance,
   fetchSites,
+  fetchTasks,
   getOrderStatus,
+  previewOrder,
   queries,
+  type OrderCommitResponse,
+  type PreviewRequestItem,
+  type PreviewResponse,
+  type StockBalance,
   type StockOrderPayload,
-  type StockOrderResponse,
   type StockSite,
   type StockStatusResponse,
-  detectSiteAndIdFromUrl,
+  type StockTask,
 } from '../../../lib/stock'
 
-type FormValues = {
-  site: string
+const MAX_LINKS = 5
+const USER_ID = 'demo-user'
+
+type LinkInput = {
   id: string
   url: string
-  responsetype: NonNullable<StockOrderPayload['responsetype']>
-  notificationChannel: string
+  error?: string
 }
 
-type FormErrors = Partial<Record<keyof FormValues, string>>
-
-type LatestResult =
-  | { status: 'success'; response: StockOrderResponse }
-  | { status: 'error'; message: string }
-  | null
-
-const initialFormValues: FormValues = {
-  site: '',
-  id: '',
-  url: '',
-  responsetype: 'any',
-  notificationChannel: '',
+type PreviewEntry = {
+  id: string
+  task?: StockTask
+  error?: string
+  selected: boolean
 }
 
-function isSuccessResult(
-  result: LatestResult,
-): result is { status: 'success'; response: StockOrderResponse } {
-  return Boolean(result && result.status === 'success')
-}
-
-function isErrorResult(result: LatestResult): result is { status: 'error'; message: string } {
-  return Boolean(result && result.status === 'error')
-}
+const createLink = (url = ''): LinkInput => ({
+  id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  url,
+})
 
 function isValidHttpUrl(value: string) {
   try {
@@ -59,89 +54,74 @@ function isValidHttpUrl(value: string) {
   }
 }
 
-function isValidNotificationChannel(value: string) {
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return isValidHttpUrl(value) || emailPattern.test(value)
+function formatPoints(points?: number) {
+  if (typeof points !== 'number' || Number.isNaN(points)) return '—'
+  return `${points.toLocaleString()} pts`
 }
 
-function validate(values: FormValues): FormErrors {
-  const errors: FormErrors = {}
-  const site = values.site.trim()
-  const id = values.id.trim()
-  const url = values.url.trim()
-  const notification = values.notificationChannel.trim()
-  const hasUrl = url.length > 0
-  const hasSite = site.length > 0
-  const hasId = id.length > 0
-
-  if (!hasUrl && !(hasSite && hasId)) {
-    const message = 'Provide a direct URL or supply both site and asset ID.'
-    errors.url = message
-    errors.site = message
-    errors.id = message
-  } else {
-    if (hasSite && !hasId) errors.id = 'An asset ID is required when a site is selected.'
-    if (hasId && !hasSite) errors.site = 'Select a site when providing an asset ID.'
-  }
-
-  if (hasUrl && !isValidHttpUrl(url)) {
-    errors.url = 'Enter a valid URL starting with http:// or https://.'
-  }
-
-  if (notification && !isValidNotificationChannel(notification)) {
-    errors.notificationChannel = 'Provide a valid webhook URL or email address.'
-  }
-
-  return errors
+function summarizeProvider(url: string, sites: StockSite[]) {
+  const detection = detectSiteAndIdFromUrl(url, sites)
+  if (!detection?.site) return null
+  const provider = sites.find((site) => site.site === detection.site)
+  return provider?.displayName ?? provider?.site ?? detection.site
 }
 
-type BulkOrderResult = {
-  url: string
-  status: 'success' | 'error'
-  message: string
-  taskId?: string
+const panelBaseStyle: CSSProperties = {
+  background: 'rgba(15, 23, 42, 0.45)',
+  borderRadius: 32,
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  padding: '36px clamp(24px, 3vw, 48px)',
+  backdropFilter: 'blur(28px)',
+  boxShadow: '0 40px 80px rgba(15, 23, 42, 0.35)',
+  color: '#f8fafc',
 }
 
-function extractTaskId(response: StockOrderResponse | null | undefined): string | null {
-  if (!response || typeof response !== 'object') return null
-  const asRecord = response as Record<string, unknown>
-  const candidates: Array<unknown> = [
-    response.taskId,
-    asRecord.task_id,
-    response.id,
-    asRecord.task,
-    typeof asRecord.task === 'object' && asRecord.task !== null ? (asRecord.task as Record<string, unknown>).id : undefined,
-    typeof asRecord.task === 'object' && asRecord.task !== null ? (asRecord.task as Record<string, unknown>).taskId : undefined,
-    typeof asRecord.result === 'object' && asRecord.result !== null ? (asRecord.result as Record<string, unknown>).taskId : undefined,
-    typeof asRecord.result === 'object' && asRecord.result !== null ? (asRecord.result as Record<string, unknown>).id : undefined,
-  ]
+const inputSurfaceStyle: CSSProperties = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: 18,
+  border: '1px solid rgba(148, 163, 184, 0.35)',
+  background: 'rgba(15, 23, 42, 0.35)',
+  color: '#f8fafc',
+}
 
-  for (const candidate of candidates) {
-    if (candidate == null) continue
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim()
-      if (trimmed.length > 0) return trimmed
-    }
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return String(candidate)
-    }
-  }
+const chipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '8px 14px',
+  borderRadius: 999,
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  background: 'rgba(148, 163, 184, 0.16)',
+  color: '#f8fafc',
+  fontSize: 13,
+}
 
-  return null
+const primaryButtonStyle: CSSProperties = {
+  width: '100%',
+  padding: '16px 20px',
+  borderRadius: 22,
+  border: '1px solid transparent',
+  background: 'linear-gradient(135deg, #38bdf8, #6366f1)',
+  color: '#f8fafc',
+  fontWeight: 600,
+  fontSize: 16,
+  cursor: 'pointer',
+  boxShadow: '0 24px 45px rgba(99, 102, 241, 0.28)',
+  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
 }
 
 export default function StockOrderPage() {
-  const [formValues, setFormValues] = useState<FormValues>(initialFormValues)
-  const [formErrors, setFormErrors] = useState<FormErrors>({})
-  const [latestResult, setLatestResult] = useState<LatestResult>(null)
+  const [links, setLinks] = useState<LinkInput[]>(() => [createLink()])
+  const [responsetype, setResponsetype] = useState<NonNullable<StockOrderPayload['responsetype']>>('any')
+  const [previewEntries, setPreviewEntries] = useState<PreviewEntry[]>([])
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [commitError, setCommitError] = useState<string | null>(null)
+  const [commitResult, setCommitResult] = useState<OrderCommitResponse | null>(null)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
-  const [pollingEnabled, setPollingEnabled] = useState(false)
   const [statusSnapshot, setStatusSnapshot] = useState<StockStatusResponse | null>(null)
-  const [bulkInput, setBulkInput] = useState('')
-  const [bulkResponseType, setBulkResponseType] = useState<FormValues['responsetype']>('any')
-  const [bulkNotificationChannel, setBulkNotificationChannel] = useState('')
-  const [bulkResults, setBulkResults] = useState<BulkOrderResult[]>([])
-  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [pollingEnabled, setPollingEnabled] = useState(false)
+
+  const queryClient = useQueryClient()
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -149,45 +129,16 @@ export default function StockOrderPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const sites = useMemo<StockSite[]>(() => sitesQuery.data ?? [], [sitesQuery.data])
-  const sitesLoading = sitesQuery.isLoading
-  const sitesError =
-    sitesQuery.isError && sitesQuery.error instanceof Error
-      ? sitesQuery.error.message
-      : sitesQuery.isError
-        ? 'Unable to load stock sites.'
-        : null
+  const balanceQuery = useQuery({
+    queryKey: queries.balance(USER_ID),
+    queryFn: ({ signal }) => fetchBalance(USER_ID, signal),
+    staleTime: 60 * 1000,
+  })
 
-  const detectionPreview = useMemo(() => {
-    const trimmed = formValues.url.trim()
-    if (!trimmed) return null
-    return detectSiteAndIdFromUrl(trimmed, sites)
-  }, [formValues.url, sites])
-
-  const detectionMessage = useMemo(() => {
-    const trimmed = formValues.url.trim()
-    if (!trimmed) return null
-    if (!isValidHttpUrl(trimmed)) return 'Enter a valid URL to enable auto-detection.'
-    if (!detectionPreview) return 'Provider detection unavailable for this URL.'
-    return null
-  }, [formValues.url, detectionPreview])
-
-  useEffect(() => {
-    if (!detectionPreview) return
-    setFormValues((prev) => {
-      let changed = false
-      const next = { ...prev }
-      if (!prev.site && detectionPreview.site) {
-        next.site = detectionPreview.site
-        changed = true
-      }
-      if (!prev.id && detectionPreview.id) {
-        next.id = detectionPreview.id
-        changed = true
-      }
-      return changed ? next : prev
-    })
-  }, [detectionPreview])
+  const taskQuery = useQuery({
+    queryKey: queries.tasks(USER_ID),
+    queryFn: ({ signal }) => fetchTasks({ userId: USER_ID, limit: 40 }, signal),
+  })
 
   const orderStatusQuery = useQuery<StockStatusResponse>({
     queryKey: activeTaskId ? queries.orderStatus(activeTaskId) : ['stock', 'order', 'status', 'idle'],
@@ -200,163 +151,187 @@ export default function StockOrderPage() {
     refetchOnWindowFocus: false,
   })
 
-  const statusData = orderStatusQuery.data
-  const statusError =
-    orderStatusQuery.isError && orderStatusQuery.error instanceof Error
-      ? orderStatusQuery.error.message
-      : orderStatusQuery.isError
-        ? 'Unable to refresh order status.'
-        : null
-  const isStatusLoading = pollingEnabled && orderStatusQuery.isLoading
-  const isStatusFetching = orderStatusQuery.isFetching
-
   useEffect(() => {
-    if (!statusData) return
-    setStatusSnapshot(statusData)
-    const normalized = typeof statusData.status === 'string' ? statusData.status.toLowerCase() : ''
+    if (!orderStatusQuery.data) return
+    setStatusSnapshot(orderStatusQuery.data)
+    const normalized = typeof orderStatusQuery.data.status === 'string' ? orderStatusQuery.data.status.toLowerCase() : ''
     const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'canceled', 'error'])
     if (terminalStatuses.has(normalized)) {
       setPollingEnabled(false)
     }
-  }, [statusData])
+  }, [orderStatusQuery.data])
 
-  const createOrderMutation = useMutation({
-    mutationFn: async (payload: StockOrderPayload) => createOrder(payload),
+  const sites = useMemo<StockSite[]>(() => sitesQuery.data ?? [], [sitesQuery.data])
+  const sitesLoading = sitesQuery.isLoading
+  const sitesError =
+    sitesQuery.isError && sitesQuery.error instanceof Error
+      ? sitesQuery.error.message
+      : sitesQuery.isError
+        ? 'Unable to load stock sites.'
+        : null
+
+  const addLink = () => {
+    setLinks((prev) => (prev.length >= MAX_LINKS ? prev : [...prev, createLink()]))
+  }
+
+  const removeLink = (id: string) => {
+    setLinks((prev) => {
+      if (prev.length <= 1) return [createLink()]
+      return prev.filter((link) => link.id !== id)
+    })
+  }
+
+  const updateLink = (id: string, url: string) => {
+    setLinks((prev) => prev.map((link) => (link.id === id ? { ...link, url, error: undefined } : link)))
+  }
+
+  const previewMutation = useMutation({
+    mutationFn: previewOrder,
     onMutate: () => {
-      setLatestResult(null)
-      setActiveTaskId(null)
-      setPollingEnabled(false)
-      setStatusSnapshot(null)
+      setPreviewError(null)
+      setCommitError(null)
+      setCommitResult(null)
     },
-    onSuccess: (data) => {
-      const normalizedTaskId = extractTaskId(data)
-      const response = normalizedTaskId && data.taskId !== normalizedTaskId ? { ...data, taskId: normalizedTaskId } : data
-      setLatestResult({ status: 'success', response })
-      setFormErrors({})
-      setFormValues(initialFormValues)
-      setActiveTaskId(normalizedTaskId)
-      setStatusSnapshot(null)
-      setPollingEnabled(Boolean(normalizedTaskId))
+    onSuccess: (data: PreviewResponse) => {
+      const nextEntries = data.results.map((result, index) => ({
+        id: result.task?.taskId ?? `${Date.now()}-${index}`,
+        task: result.task,
+        error: result.error,
+        selected: Boolean(result.task && !result.error),
+      }))
+      setPreviewEntries(nextEntries)
+      if (data.balance) {
+        queryClient.setQueryData(queries.balance(USER_ID), data.balance)
+      }
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : 'Failed to queue the stock order.'
-      setLatestResult({ status: 'error', message })
-      setActiveTaskId(null)
-      setPollingEnabled(false)
-      setStatusSnapshot(null)
+      setPreviewEntries([])
+      setPreviewError(error instanceof Error ? error.message : 'Failed to preview links.')
     },
   })
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const commitMutation = useMutation({
+    mutationFn: commitOrder,
+    onMutate: () => {
+      setCommitError(null)
+    },
+    onSuccess: (data: OrderCommitResponse) => {
+      setCommitResult(data)
+      setPreviewEntries((prev) =>
+        prev.map((entry) => {
+          const updated = data.tasks.find((task) => task.taskId === entry.task?.taskId)
+          if (!updated) return entry
+          return { ...entry, task: updated, selected: false }
+        }),
+      )
+      if (data.balance) {
+        queryClient.setQueryData(queries.balance(USER_ID), data.balance)
+      }
+      queryClient.invalidateQueries(queries.tasks(USER_ID))
+      if (data.failures.length > 0) {
+        const failureSummary = data.failures
+          .map((failure) => `${failure.taskId.slice(0, 8)}…: ${failure.error}`)
+          .join('\n')
+        setCommitError(`Some tasks failed to queue:\n${failureSummary}`)
+      }
+      const nextTaskId = data.tasks.find((task) => task.status !== 'error')?.taskId ?? data.tasks[0]?.taskId
+      if (nextTaskId) {
+        setActiveTaskId(nextTaskId)
+        setStatusSnapshot(null)
+        setPollingEnabled(true)
+      }
+    },
+    onError: (error: unknown) => {
+      setCommitError(error instanceof Error ? error.message : 'Failed to queue selected tasks.')
+    },
+  })
+
+  const handlePreviewSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmedValues: FormValues = {
-      site: formValues.site.trim(),
-      id: formValues.id.trim(),
-      url: formValues.url.trim(),
-      responsetype: formValues.responsetype,
-      notificationChannel: formValues.notificationChannel.trim(),
-    }
-    const nextErrors = validate(trimmedValues)
-    setFormErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
+    const nextLinks = links.map((link) => {
+      const trimmed = link.url.trim()
+      let error: string | undefined
+      if (!trimmed) {
+        error = 'Enter a direct URL to preview.'
+      } else if (!isValidHttpUrl(trimmed)) {
+        error = 'Use a valid URL starting with http:// or https://.'
+      }
+      return { ...link, url: trimmed, error }
+    })
+    setLinks(nextLinks)
+    if (nextLinks.some((link) => link.error)) return
 
-    const payload: StockOrderPayload = {
-      site: trimmedValues.site || undefined,
-      id: trimmedValues.id || undefined,
-      url: trimmedValues.url || undefined,
-      responsetype: trimmedValues.responsetype,
-      notificationChannel: trimmedValues.notificationChannel || undefined,
-    }
-
-    createOrderMutation.mutate(payload)
+    const items: PreviewRequestItem[] = nextLinks.map((link) => ({ url: link.url }))
+    previewMutation.mutate({ userId: USER_ID, items, responsetype })
   }
 
-  const latestSuccess = isSuccessResult(latestResult) ? latestResult.response : null
-  const latestError = isErrorResult(latestResult) ? latestResult : null
+  const toggleSelection = (taskId: string, selected: boolean) => {
+    setPreviewEntries((prev) =>
+      prev.map((entry) => (entry.task?.taskId === taskId ? { ...entry, selected } : entry)),
+    )
+  }
 
-  const currentStatus = (statusSnapshot?.status ?? latestSuccess?.status ?? 'queued') as string
-  const currentMessage = (() => {
-    if (statusSnapshot && typeof statusSnapshot.message === 'string') return statusSnapshot.message
-    if (latestSuccess && typeof latestSuccess.message === 'string') return latestSuccess.message
-    return undefined
-  })()
-  const currentProgress =
-    statusSnapshot && typeof statusSnapshot.progress === 'number'
-      ? statusSnapshot.progress
-      : undefined
+  const selectedTaskIds = previewEntries
+    .filter((entry) => entry.selected && entry.task?.taskId)
+    .map((entry) => entry.task!.taskId)
+
+  const totalPreviewPoints = previewEntries.reduce((sum, entry) => sum + (entry.task?.costPoints ?? 0), 0)
+  const selectedPoints = previewEntries.reduce(
+    (sum, entry) => sum + (entry.selected && entry.task?.costPoints ? entry.task.costPoints : 0),
+    0,
+  )
+
+  const availablePoints = balanceQuery.data?.points ?? 0
+  const insufficientBalance = selectedPoints > availablePoints
+
+  const handleCommitSelected = () => {
+    if (selectedTaskIds.length === 0 || insufficientBalance) return
+    commitMutation.mutate({ userId: USER_ID, taskIds: selectedTaskIds, responsetype })
+  }
+
+  const handleCommitSingle = (taskId: string) => {
+    if (!taskId) return
+    commitMutation.mutate({ userId: USER_ID, taskIds: [taskId], responsetype })
+  }
+
+  const handleConfirm = async () => {
+    if (!activeTaskId) return
+    try {
+      const response = await confirmOrder(activeTaskId, { responsetype })
+      setStatusSnapshot(response)
+      setPollingEnabled(true)
+      orderStatusQuery.refetch()
+    } catch (error) {
+      setCommitError(error instanceof Error ? error.message : 'Failed to confirm order.')
+    }
+  }
+
+  const currentStatus = statusSnapshot?.status ?? 'queued'
+  const currentMessage =
+    (typeof statusSnapshot?.message === 'string' && statusSnapshot.message) ||
+    (typeof statusSnapshot?.latestMessage === 'string' && statusSnapshot.latestMessage) ||
+    undefined
+  const currentProgress = statusSnapshot?.progress
   const currentDownloadUrl = statusSnapshot?.downloadUrl as string | undefined
   const currentFiles = Array.isArray(statusSnapshot?.files)
     ? (statusSnapshot?.files as StockStatusResponse['files'])
-    : Array.isArray(latestSuccess?.files)
-      ? (latestSuccess?.files as StockStatusResponse['files'])
-      : undefined
-  const queuedAt = latestSuccess?.queuedAt ? new Date(latestSuccess.queuedAt).toLocaleString() : null
+    : undefined
   const lastUpdated = statusSnapshot
     ? new Date(orderStatusQuery.dataUpdatedAt || Date.now()).toLocaleString()
-    : queuedAt
+    : null
 
-  const showStatusPanel = Boolean(activeTaskId || statusSnapshot || latestSuccess)
   const normalizedStatus = currentStatus?.toLowerCase?.() ?? ''
   const hasDownloadArtifacts = Boolean(currentDownloadUrl || (currentFiles && currentFiles.length > 0))
   const shouldShowConfirm = normalizedStatus === 'ready' && hasDownloadArtifacts
-  const activeSites = sites.filter((site) => site.active !== false)
-  const totalSites = sites.length
-  const successfulBulkCount = bulkResults.filter((result) => result.status === 'success').length
-  const supportedSiteNames = sites.slice(0, 14).map((site) => site.displayName ?? site.site)
-
-  const panelBaseStyle: CSSProperties = {
-    background: 'rgba(15, 23, 42, 0.45)',
-    borderRadius: 32,
-    border: '1px solid rgba(255, 255, 255, 0.18)',
-    padding: '36px clamp(24px, 3vw, 48px)',
-    backdropFilter: 'blur(28px)',
-    boxShadow: '0 40px 80px rgba(15, 23, 42, 0.35)',
-    color: '#f8fafc',
-  }
-
-  const inputSurfaceStyle: CSSProperties = {
-    width: '100%',
-    padding: '12px 16px',
-    borderRadius: 18,
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    background: 'rgba(15, 23, 42, 0.35)',
-    color: '#f8fafc',
-  }
-
-  const chipStyle: CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '8px 14px',
-    borderRadius: 999,
-    border: '1px solid rgba(255, 255, 255, 0.18)',
-    background: 'rgba(148, 163, 184, 0.16)',
-    color: '#f8fafc',
-    fontSize: 13,
-  }
-
-  const primaryButtonStyle: CSSProperties = {
-    width: '100%',
-    padding: '16px 20px',
-    borderRadius: 22,
-    border: '1px solid transparent',
-    background: 'linear-gradient(135deg, #38bdf8, #6366f1)',
-    color: '#f8fafc',
-    fontWeight: 600,
-    fontSize: 16,
-    cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
-    boxShadow: '0 24px 45px rgba(99, 102, 241, 0.28)',
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-  }
 
   const headlineStats = [
     {
       label: 'Active providers',
-      value: activeSites.length || totalSites || '—',
+      value: (sites.filter((site) => site.active !== false).length || sites.length || '—') as string | number,
     },
     {
-      label: 'Bulk successes',
-      value: successfulBulkCount,
+      label: 'Previewed links',
+      value: previewEntries.filter((entry) => entry.task).length,
     },
     {
       label: 'Live task state',
@@ -364,110 +339,7 @@ export default function StockOrderPage() {
     },
   ]
 
-  const handleConfirm = async () => {
-    if (!activeTaskId) return
-    try {
-      const response = await confirmOrder(activeTaskId, { responsetype: formValues.responsetype })
-      setStatusSnapshot(response)
-      setPollingEnabled(true)
-      orderStatusQuery.refetch()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to confirm order.'
-      setLatestResult({ status: 'error', message })
-    }
-  }
-
-  const handleBulkSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const lines = bulkInput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-
-    const notification = bulkNotificationChannel.trim()
-    if (notification && !isValidNotificationChannel(notification)) {
-      setBulkResults([
-        {
-          url: 'Notification channel',
-          status: 'error',
-          message: 'Provide a valid webhook URL or email address for bulk orders.',
-        },
-      ])
-      return
-    }
-
-    if (lines.length === 0) {
-      setBulkResults([
-        { url: 'Bulk queue', status: 'error', message: 'Add at least one URL to queue.' },
-      ])
-      return
-    }
-
-    setBulkSubmitting(true)
-    const results: BulkOrderResult[] = []
-    let firstSuccessResponse: StockOrderResponse | null = null
-
-    for (const rawUrl of lines) {
-      const trimmedUrl = rawUrl.trim()
-      const detection = detectSiteAndIdFromUrl(trimmedUrl, sites)
-      const url = isValidHttpUrl(trimmedUrl) ? trimmedUrl : undefined
-      const site = detection?.site
-      const id = detection?.id
-
-      if (!url && !(site && id)) {
-        results.push({
-          url: rawUrl,
-          status: 'error',
-          message: 'Could not detect provider. Add site and ID manually.',
-        })
-        continue
-      }
-
-      try {
-        const response = await createOrder({
-          url,
-          site,
-          id,
-          responsetype: bulkResponseType,
-          notificationChannel: notification || undefined,
-        })
-        const baseMessage = response.message ?? 'Queued.'
-        const detectionDetails = site
-          ? `Detected provider: ${site}${id ? ` • ID ${id}` : ''}`
-          : null
-        const normalizedTaskId = extractTaskId(response)
-        const enrichedResponse =
-          normalizedTaskId && response.taskId !== normalizedTaskId
-            ? { ...response, taskId: normalizedTaskId }
-            : response
-        results.push({
-          url: rawUrl,
-          status: 'success',
-          message: detectionDetails ? `${baseMessage} ${detectionDetails}` : baseMessage,
-          taskId: normalizedTaskId ?? response.taskId,
-        })
-        if (!firstSuccessResponse && normalizedTaskId) {
-          firstSuccessResponse = enrichedResponse
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to queue order.'
-        results.push({ url: rawUrl, status: 'error', message })
-      }
-    }
-
-    setBulkResults(results)
-    setBulkSubmitting(false)
-
-    if (firstSuccessResponse) {
-      const normalizedTaskId = extractTaskId(firstSuccessResponse)
-      const response =
-        normalizedTaskId && firstSuccessResponse.taskId !== normalizedTaskId
-          ? { ...firstSuccessResponse, taskId: normalizedTaskId }
-          : firstSuccessResponse
-      setLatestResult({ status: 'success', response })
-      setActiveTaskId(normalizedTaskId)
-    }
-  }
+  const supportedSiteNames = sites.slice(0, 14).map((site) => site.displayName ?? site.site)
 
   return (
     <main
@@ -538,10 +410,10 @@ export default function StockOrderPage() {
                   margin: 0,
                 }}
               >
-                Download any stock asset in a single, fluid workflow.
+                Download up to five stock assets in a single, fluid workflow.
               </h1>
               <p style={{ color: 'rgba(226, 232, 255, 0.78)', margin: '12px 0 0', fontSize: 'clamp(16px, 2vw, 18px)' }}>
-                Queue assets from 40+ providers, confirm delivery, and monitor progress in real-time with a glassmorphism experience crafted for 2025.
+                Preview costs, reserve assets in batches, and track delivery without leaving this glass desk. Your balance updates instantly when orders are committed.
               </p>
             </div>
             <div
@@ -584,73 +456,82 @@ export default function StockOrderPage() {
           <section style={panelBaseStyle}>
             <div style={{ display: 'grid', gap: 20 }}>
               <div style={{ display: 'grid', gap: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 'clamp(26px, 3vw, 32px)', fontWeight: 700 }}>Instant download order</h2>
+                <h2 style={{ margin: 0, fontSize: 'clamp(26px, 3vw, 32px)', fontWeight: 700 }}>Preview up to five links</h2>
                 <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.75)' }}>
-                  Paste a stock URL or provide provider credentials. We detect the best route and queue instantly.
+                  Paste direct asset URLs. We detect providers, estimate cost, and hold previews so you can queue everything together or one-by-one.
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 20 }}>
-                <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                  <Field label="Provider" hint="Select a stock provider." htmlFor="stock-provider">
-                    <select
-                      id="stock-provider"
-                      value={formValues.site}
-                      onChange={(event) =>
-                        setFormValues((prev) => ({ ...prev, site: event.target.value }))
-                      }
-                      disabled={sitesLoading}
-                      style={inputSurfaceStyle}
-                    >
-                      <option value="">Auto-detect provider</option>
-                      {sites.map((site) => (
-                        <option key={site.site} value={site.site}>
-                          {site.displayName ?? site.site}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <Field label="Asset ID" hint="Used when the provider requires a unique identifier." htmlFor="stock-asset-id">
-                    <input
-                      id="stock-asset-id"
-                      value={formValues.id}
-                      onChange={(event) =>
-                        setFormValues((prev) => ({ ...prev, id: event.target.value }))
-                      }
-                      placeholder="e.g. 123456789"
-                      style={inputSurfaceStyle}
-                    />
-                  </Field>
+              <form onSubmit={handlePreviewSubmit} style={{ display: 'grid', gap: 24 }}>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  {links.map((link, index) => {
+                    const provider = summarizeProvider(link.url, sites)
+                    return (
+                      <Fragment key={link.id}>
+                        <Field
+                          label={`Link ${index + 1}`}
+                          hint={provider ? `Detected provider: ${provider}` : 'Paste a direct stock asset URL.'}
+                          error={link.error}
+                          htmlFor={`link-${link.id}`}
+                        >
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                            <input
+                              id={`link-${link.id}`}
+                              value={link.url}
+                              onChange={(event) => updateLink(link.id, event.target.value)}
+                              placeholder="https://example.com/asset"
+                              style={{ ...inputSurfaceStyle, flex: 1 }}
+                            />
+                            {links.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => removeLink(link.id)}
+                                style={{
+                                  padding: '10px 16px',
+                                  borderRadius: 16,
+                                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                                  background: 'rgba(15, 23, 42, 0.4)',
+                                  color: '#e2e8f0',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                          </div>
+                        </Field>
+                      </Fragment>
+                    )
+                  })}
                 </div>
 
-                <Field
-                  label="Direct URL"
-                  hint={detectionMessage ?? 'Alternative to site + ID. Paste the full asset URL.'}
-                  error={formErrors.url}
-                  htmlFor="stock-direct-url"
-                >
-                  <input
-                    id="stock-direct-url"
-                    value={formValues.url}
-                    onChange={(event) =>
-                      setFormValues((prev) => ({ ...prev, url: event.target.value }))
-                    }
-                    placeholder="https://example.com/asset"
-                    style={inputSurfaceStyle}
-                  />
-                </Field>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={addLink}
+                    disabled={links.length >= MAX_LINKS}
+                    style={{
+                      padding: '12px 18px',
+                      borderRadius: 18,
+                      border: '1px solid rgba(148, 163, 184, 0.35)',
+                      background: links.length >= MAX_LINKS ? 'rgba(100, 116, 139, 0.24)' : 'rgba(56, 189, 248, 0.18)',
+                      color: '#f8fafc',
+                      fontWeight: 600,
+                      cursor: links.length >= MAX_LINKS ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {links.length >= MAX_LINKS ? 'Link limit reached' : 'Add another link'}
+                  </button>
 
-                <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                  <Field label="Response type" htmlFor="stock-response-type">
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <label htmlFor="responsetype" style={{ display: 'block', marginBottom: 6, fontSize: 14, color: 'rgba(226, 232, 255, 0.8)' }}>
+                      Preferred delivery
+                    </label>
                     <select
-                      id="stock-response-type"
-                      value={formValues.responsetype}
+                      id="responsetype"
+                      value={responsetype}
                       onChange={(event) =>
-                        setFormValues((prev) => ({
-                          ...prev,
-                          responsetype: event.target.value as FormValues['responsetype'],
-                        }))
+                        setResponsetype(event.target.value as NonNullable<StockOrderPayload['responsetype']>)
                       }
                       style={inputSurfaceStyle}
                     >
@@ -659,47 +540,185 @@ export default function StockOrderPage() {
                       <option value="asia">Asia CDN</option>
                       <option value="mydrivelink">My Drive Link</option>
                     </select>
-                  </Field>
-
-                  <Field
-                    label="Notification channel"
-                    hint="Optional webhook or email for completion updates."
-                    htmlFor="stock-notification-channel"
-                  >
-                    <input
-                      id="stock-notification-channel"
-                      value={formValues.notificationChannel}
-                      onChange={(event) =>
-                        setFormValues((prev) => ({
-                          ...prev,
-                          notificationChannel: event.target.value,
-                        }))
-                      }
-                      placeholder="https://hooks.slack.com/... or email@example.com"
-                      style={inputSurfaceStyle}
-                    />
-                  </Field>
+                  </div>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={createOrderMutation.isPending}
+                  disabled={previewMutation.isPending}
                   style={{
                     ...primaryButtonStyle,
-                    cursor: createOrderMutation.isPending ? 'not-allowed' : 'pointer',
-                    opacity: createOrderMutation.isPending ? 0.7 : 1,
+                    cursor: previewMutation.isPending ? 'not-allowed' : 'pointer',
+                    opacity: previewMutation.isPending ? 0.7 : 1,
                   }}
                 >
-                  {createOrderMutation.isPending ? 'Submitting…' : 'Queue order'}
+                  {previewMutation.isPending ? 'Generating preview…' : 'Preview links'}
                 </button>
 
+                {balanceQuery.isLoading ? (
+                  <Toast title="Loading balance…" message="Fetching your current points." variant="info" />
+                ) : null}
+                {balanceQuery.isError ? (
+                  <Toast
+                    title="Could not load balance"
+                    message={balanceQuery.error instanceof Error ? balanceQuery.error.message : 'Try again later.'}
+                    variant="error"
+                  />
+                ) : null}
                 {sitesLoading ? (
-                  <Toast title="Loading sites…" message="Fetching providers from the API." variant="info" />
+                  <Toast title="Loading providers…" message="Fetching providers from the API." variant="info" />
                 ) : null}
                 {sitesError ? (
                   <Toast title="Could not load providers" message={sitesError} variant="error" />
                 ) : null}
+                {previewError ? <Toast title="Preview failed" message={previewError} variant="error" /> : null}
               </form>
+
+              <div style={{ display: 'grid', gap: 18 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 16,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.7)' }}>Available points</span>
+                    <strong style={{ fontSize: 24 }}>{formatPoints(balanceQuery.data?.points)}</strong>
+                  </div>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.7)' }}>Selected cost</span>
+                    <strong style={{ fontSize: 24, color: insufficientBalance ? '#f87171' : '#f8fafc' }}>
+                      {formatPoints(selectedPoints)}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.7)' }}>Preview total</span>
+                    <strong style={{ fontSize: 20 }}>{formatPoints(totalPreviewPoints)}</strong>
+                  </div>
+                </div>
+
+                {previewEntries.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Preview results</h3>
+                    {previewEntries.map((entry) => {
+                      const task = entry.task
+                      return (
+                        <div
+                          key={entry.id}
+                          style={{
+                            display: 'grid',
+                            gap: 12,
+                            padding: '18px 20px',
+                            borderRadius: 24,
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                            background: 'rgba(15, 23, 42, 0.4)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                            <input
+                              type="checkbox"
+                              checked={entry.selected && Boolean(task)}
+                              onChange={(event) => toggleSelection(task?.taskId ?? '', event.target.checked)}
+                              disabled={!task}
+                              style={{ width: 18, height: 18 }}
+                            />
+                            <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <strong style={{ fontSize: 18 }}>
+                                    {task?.title ?? 'Preview unavailable'}
+                                  </strong>
+                                  <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.7)' }}>
+                                    {task?.site ? `${task.site}${task.assetId ? ` • ${task.assetId}` : ''}` : 'Unknown provider'}
+                                  </span>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.7)' }}>Cost</span>
+                                  <div style={{ fontSize: 18, fontWeight: 600 }}>{formatPoints(task?.costPoints)}</div>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.72)' }}>
+                                {entry.error ?? task?.latestMessage ?? 'Ready to order.'}
+                              </div>
+                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCommitSingle(task?.taskId ?? '')}
+                                  disabled={!task || commitMutation.isPending || insufficientBalance}
+                                  style={{
+                                    padding: '10px 16px',
+                                    borderRadius: 16,
+                                    border: '1px solid rgba(148, 163, 184, 0.35)',
+                                    background: task && !insufficientBalance ? 'rgba(56, 189, 248, 0.22)' : 'rgba(100, 116, 139, 0.24)',
+                                    color: '#0ea5e9',
+                                    fontWeight: 600,
+                                    cursor: task && !insufficientBalance ? 'pointer' : 'not-allowed',
+                                  }}
+                                >
+                                  Order individually
+                                </button>
+                                {task?.previewUrl ? (
+                                  <a
+                                    href={task.previewUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      padding: '10px 16px',
+                                      borderRadius: 16,
+                                      border: '1px solid rgba(148, 163, 184, 0.35)',
+                                      color: '#38bdf8',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    View preview
+                                  </a>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={handleCommitSelected}
+                      disabled={selectedTaskIds.length === 0 || commitMutation.isPending || insufficientBalance}
+                      style={{
+                        ...primaryButtonStyle,
+                        cursor:
+                          selectedTaskIds.length === 0 || commitMutation.isPending || insufficientBalance
+                            ? 'not-allowed'
+                            : 'pointer',
+                        opacity:
+                          selectedTaskIds.length === 0 || commitMutation.isPending || insufficientBalance ? 0.65 : 1,
+                      }}
+                    >
+                      {commitMutation.isPending ? 'Queuing order…' : 'Queue selected links'}
+                    </button>
+
+                    {insufficientBalance ? (
+                      <Toast
+                        title="Insufficient balance"
+                        message="Reduce selection or top up points to continue."
+                        variant="warning"
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {commitError ? <Toast title="Order issue" message={commitError} variant="error" /> : null}
+                {commitResult && commitResult.pointsDeducted > 0 ? (
+                  <Toast
+                    title="Points deducted"
+                    message={`Deducted ${formatPoints(commitResult.pointsDeducted)} from balance.`}
+                    variant="success"
+                  />
+                ) : null}
+              </div>
 
               {supportedSiteNames.length ? (
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -724,16 +743,12 @@ export default function StockOrderPage() {
               </p>
             </div>
 
-            {latestError ? (
-              <Toast title="Could not queue order" message={latestError.message} variant="error" />
-            ) : showStatusPanel ? (
+            {statusSnapshot || activeTaskId ? (
               <div style={{ display: 'grid', gap: 18 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     <StatusBadge status={currentStatus ?? 'queued'} />
-                    <div style={{ fontWeight: 600 }}>
-                      Task ID: {activeTaskId ?? latestSuccess?.taskId ?? 'Unknown'}
-                    </div>
+                    <div style={{ fontWeight: 600 }}>Task ID: {activeTaskId ?? 'Unknown'}</div>
                   </div>
                   {currentMessage ? (
                     <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.8)' }}>{currentMessage}</p>
@@ -753,8 +768,8 @@ export default function StockOrderPage() {
                   ) : null}
                   {!currentDownloadUrl && currentFiles?.length ? (
                     <ul style={{ margin: 0, paddingLeft: 20, color: 'rgba(226, 232, 255, 0.8)', fontSize: 13 }}>
-                      {currentFiles.map((file) => (
-                        <li key={`${file?.name ?? file?.url ?? 'file'}-${file?.url ?? 'unknown'}`} style={{ marginBottom: 6 }}>
+                      {currentFiles.map((file, index) => (
+                        <li key={`${file?.url ?? file?.name ?? 'file'}-${index}`} style={{ marginBottom: 6 }}>
                           {file?.url ? (
                             <a
                               href={file.url}
@@ -772,9 +787,7 @@ export default function StockOrderPage() {
                     </ul>
                   ) : null}
                   {lastUpdated ? (
-                    <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.62)', fontSize: 13 }}>
-                      Last update: {lastUpdated}
-                    </p>
+                    <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.62)', fontSize: 13 }}>Last update: {lastUpdated}</p>
                   ) : null}
                 </div>
 
@@ -820,7 +833,7 @@ export default function StockOrderPage() {
                         }
                         orderStatusQuery.refetch()
                       }}
-                      disabled={isStatusFetching}
+                      disabled={orderStatusQuery.isFetching}
                       style={{
                         padding: '10px 16px',
                         borderRadius: 16,
@@ -830,173 +843,49 @@ export default function StockOrderPage() {
                         fontWeight: 600,
                       }}
                     >
-                      {isStatusFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
+                      {orderStatusQuery.isFetching ? 'Refreshing…' : pollingEnabled ? 'Poll now' : 'Refresh status'}
                     </button>
                   ) : null}
                 </div>
 
-                {isStatusLoading ? (
+                {orderStatusQuery.isLoading ? (
                   <Toast title="Refreshing status" message="Polling the task for updates." variant="info" />
                 ) : null}
                 {!pollingEnabled && activeTaskId ? (
-                  <Toast
-                    title="Polling paused"
-                    message="Polling resumes automatically when you refresh."
-                    variant="info"
-                  />
-                ) : null}
-                {statusError ? (
-                  <Toast title="Status update failed" message={statusError} variant="error" />
+                  <Toast title="Polling paused" message="Polling resumes when you refresh." variant="info" />
                 ) : null}
               </div>
             ) : (
-              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
-                Queue an order to start tracking its progress here.
-              </p>
+              <Toast title="No active task" message="Preview and queue links to start tracking progress." variant="info" />
             )}
-          </section>
-        </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gap: 32,
-            gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)',
-          }}
-        >
-          <section style={{ ...panelBaseStyle, padding: '32px clamp(22px, 3vw, 44px)', display: 'grid', gap: 24 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h2 style={{ margin: 0, fontSize: 'clamp(24px, 2.5vw, 30px)', fontWeight: 700 }}>Bulk queue</h2>
-              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
-                Paste multiple URLs and we will auto-detect supported providers whenever possible.
-              </p>
-            </div>
-
-            <form onSubmit={handleBulkSubmit} style={{ display: 'grid', gap: 20 }}>
-              <Field label="Asset URLs" hint="Enter one URL per line." htmlFor="stock-bulk-urls">
-                <textarea
-                  id="stock-bulk-urls"
-                  value={bulkInput}
-                  onChange={(event) => setBulkInput(event.target.value)}
-                  rows={6}
-                  placeholder={'https://example.com/asset-1\nhttps://example.com/asset-2'}
-                  style={{ ...inputSurfaceStyle, minHeight: 168, resize: 'vertical' }}
+            <div style={{ display: 'grid', gap: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Recent tasks</h3>
+              {taskQuery.isLoading ? (
+                <Toast title="Loading tasks…" message="Fetching recent orders." variant="info" />
+              ) : taskQuery.isError ? (
+                <Toast
+                  title="Could not load tasks"
+                  message={taskQuery.error instanceof Error ? taskQuery.error.message : 'Try again soon.'}
+                  variant="error"
                 />
-              </Field>
-
-              <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-                <Field label="Response type" htmlFor="stock-bulk-response-type">
-                  <select
-                    id="stock-bulk-response-type"
-                    value={bulkResponseType}
-                    onChange={(event) =>
-                      setBulkResponseType(event.target.value as FormValues['responsetype'])
-                    }
-                    style={inputSurfaceStyle}
-                  >
-                    <option value="any">Any (auto)</option>
-                    <option value="gdrive">Google Drive</option>
-                    <option value="asia">Asia CDN</option>
-                    <option value="mydrivelink">My Drive Link</option>
-                  </select>
-                </Field>
-
-                <Field
-                  label="Notification channel"
-                  hint="Optional email or webhook for all queued tasks."
-                  htmlFor="stock-bulk-notification"
-                >
-                  <input
-                    id="stock-bulk-notification"
-                    value={bulkNotificationChannel}
-                    onChange={(event) => setBulkNotificationChannel(event.target.value)}
-                    placeholder="https://hooks.slack.com/... or email@example.com"
-                    style={inputSurfaceStyle}
-                  />
-                </Field>
-              </div>
-
-              <button
-                type="submit"
-                disabled={bulkSubmitting}
-                style={{
-                  ...primaryButtonStyle,
-                  cursor: bulkSubmitting ? 'not-allowed' : 'pointer',
-                  opacity: bulkSubmitting ? 0.7 : 1,
-                }}
-              >
-                {bulkSubmitting ? 'Queueing…' : 'Queue all URLs'}
-              </button>
-            </form>
-
-            <div style={{ display: 'grid', gap: 12 }}>
-              {bulkResults.map((result) => (
-                <div
-                  key={`${result.url}-${result.status}-${result.message}`}
-                  style={{
-                    padding: '14px 18px',
-                    borderRadius: 18,
-                    border: '1px solid rgba(255, 255, 255, 0.14)',
-                    background: result.status === 'success' ? 'rgba(22, 163, 74, 0.16)' : 'rgba(239, 68, 68, 0.18)',
-                    color: result.status === 'success' ? '#bbf7d0' : '#fecaca',
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>{result.url}</div>
-                  <div style={{ fontSize: 14 }}>{result.message}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section style={{ ...panelBaseStyle, padding: '32px clamp(22px, 3vw, 44px)', display: 'grid', gap: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h2 style={{ margin: 0, fontSize: 'clamp(24px, 2.5vw, 30px)', fontWeight: 700 }}>Provider insights</h2>
-              <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>
-                Stay informed about availability and points cost across the network.
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gap: 12 }}>
-              {sites.map((provider) => {
-                const price = provider.price ?? provider.minPrice ?? null
-                const priceDisplay = price != null ? `${price}${provider.currency ? ` ${provider.currency}` : ''}` : '—'
-                return (
-                  <div
-                    key={provider.site}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '12px 16px',
-                      borderRadius: 18,
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      background: 'rgba(15, 23, 42, 0.35)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 600 }}>{provider.displayName ?? provider.site}</span>
-                      <span style={{ fontSize: 13, color: 'rgba(226, 232, 255, 0.68)' }}>{provider.site}</span>
-                    </div>
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '6px 12px',
-                          borderRadius: 999,
-                          background: provider.active === false ? 'rgba(239, 68, 68, 0.22)' : 'rgba(34, 197, 94, 0.22)',
-                          color: provider.active === false ? '#fee2e2' : '#bbf7d0',
-                          fontWeight: 600,
-                        }}
-                      >
-                        {provider.active === false ? 'Offline' : 'Online'}
-                      </span>
-                      <span style={{ fontSize: 14, color: 'rgba(226, 232, 255, 0.8)' }}>Price: {priceDisplay}</span>
-                    </div>
-                  </div>
-                )
-              })}
+              ) : taskQuery.data?.length ? (
+                <ul style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 10 }}>
+                  {taskQuery.data.map((task) => (
+                    <li key={task.taskId} style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600 }}>{task.title ?? task.taskId}</span>
+                        <span style={{ color: 'rgba(226, 232, 255, 0.7)' }}>{formatPoints(task.costPoints)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'rgba(226, 232, 255, 0.65)' }}>
+                        {task.status?.toUpperCase?.() ?? 'UNKNOWN'} • Updated {new Date(task.updatedAt).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(226, 232, 255, 0.7)' }}>No recent tasks yet.</p>
+              )}
             </div>
           </section>
         </div>

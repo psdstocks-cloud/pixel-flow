@@ -13,6 +13,16 @@ if (!API_KEY) {
   console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.')
 }
 
+function formatError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return 'Unexpected error'
+  }
+}
+
 type DownloadResponse = {
   downloadLink?: string
   link?: string
@@ -166,6 +176,10 @@ function extractTaskIdFromResponse(data: Record<string, unknown>): string | null
   }
 
   return null
+}
+
+function resolveSite(item: MultiLinkItem, info?: Record<string, unknown>): string | undefined {
+  return item.site ?? (info ? safeString(info.site) : undefined)
 }
 
 async function getOrCreateUserBalance(userId: string) {
@@ -372,6 +386,186 @@ function badRequest(res: express.Response, issues: z.ZodIssue[]) {
   return res.status(400).json({ error: 'ValidationError', issues })
 }
 
+router.get('/balance/:userId', async (req, res, next) => {
+  try {
+    const { userId } = req.params
+    if (!userId) return badRequest(res, [{ message: 'Missing userId', path: ['userId'], code: 'custom' } as z.ZodIssue])
+    const balance = await getOrCreateUserBalance(userId)
+    return res.json({ userId, points: balance.points, updatedAt: balance.updatedAt.toISOString() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/balance/:userId/adjust', async (req, res, next) => {
+  try {
+    const { userId } = req.params
+    if (!userId) return badRequest(res, [{ message: 'Missing userId', path: ['userId'], code: 'custom' } as z.ZodIssue])
+    const parsed = BalanceAdjustSchema.safeParse(req.body)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const balance = await getOrCreateUserBalance(userId)
+    const nextPoints = Math.max(balance.points + parsed.data.deltaPoints, 0)
+    const updated = await prisma.userBalance.update({ where: { userId }, data: { points: nextPoints } })
+    return res.json({ userId, points: updated.points, updatedAt: updated.updatedAt.toISOString() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/tasks', async (req, res, next) => {
+  try {
+    const parsed = TaskListQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { userId, limit = 25 } = parsed.data
+    const tasks = await prisma.stockOrderTask.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+    return res.json({ tasks: tasks.map(formatTaskResponse) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/order/preview', async (req, res, next) => {
+  try {
+    const parsed = PreviewRequestSchema.safeParse(req.body)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { userId, items, responsetype } = parsed.data
+
+    const balance = await getOrCreateUserBalance(userId)
+    const previewResults: Array<{ task?: ReturnType<typeof formatTaskResponse>; error?: string }> = []
+
+    for (const item of items) {
+      try {
+        const info = await fetchInfoForItem(item, responsetype)
+        const costPoints = determineCostPoints(info)
+        const costAmount = determineCostAmount(info)
+        const costCurrency = determineCurrency(info)
+        const title = pickTitle(info)
+        const previewUrl = pickPreviewUrl(info)
+        const thumbnailUrl = pickThumbnail(info)
+        const assetId = pickAssetId(info)
+        const site = resolveSite(item, info)
+        const sourceUrl = computeSourceUrl(item, info)
+
+        const created = await prisma.stockOrderTask.create({
+          data: {
+            userId,
+            sourceUrl,
+            site,
+            assetId,
+            title,
+            previewUrl,
+            thumbnailUrl,
+            costPoints: costPoints ?? undefined,
+            costAmount: costAmount ?? undefined,
+            costCurrency: costCurrency ?? undefined,
+            status: 'preview',
+            latestMessage: 'Ready to order.',
+            responsetype,
+          },
+        })
+
+        previewResults.push({ task: formatTaskResponse(created) })
+      } catch (error) {
+        previewResults.push({ error: formatError(error) })
+      }
+    }
+
+    return res.json({ balance: { userId, points: balance.points }, results: previewResults })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/order/commit', async (req, res, next) => {
+  try {
+    const parsed = OrderCommitSchema.safeParse(req.body)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const { userId, taskIds, responsetype } = parsed.data
+
+    const tasks = await prisma.stockOrderTask.findMany({
+      where: {
+        id: { in: taskIds },
+        userId,
+      },
+    })
+
+    if (tasks.length === 0) {
+      return res.status(404).json({ error: 'NotFound', message: 'No tasks found for provided identifiers.' })
+    }
+
+    const costByTask = new Map<string, number>()
+    let totalRequestedPoints = 0
+    for (const task of tasks) {
+      const cost = task.costPoints ?? 0
+      costByTask.set(task.id, cost)
+      totalRequestedPoints += cost
+    }
+
+    const balance = await getOrCreateUserBalance(userId)
+    if (balance.points < totalRequestedPoints) {
+      return res.status(400).json({
+        error: 'InsufficientBalance',
+        availablePoints: balance.points,
+        requiredPoints: totalRequestedPoints,
+      })
+    }
+
+    const successes: Array<ReturnType<typeof formatTaskResponse>> = []
+    const failures: Array<{ taskId: string; error: string }> = []
+    let pointsToDeduct = 0
+
+    for (const task of tasks) {
+      try {
+        const queueResult = await queueStockOrderTask(task, responsetype ?? task.responsetype ?? undefined)
+        const updated = await prisma.stockOrderTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'queued',
+            externalTaskId: queueResult.externalTaskId ?? task.externalTaskId,
+            latestMessage: queueResult.latestMessage,
+            downloadUrl: queueResult.downloadUrl ?? task.downloadUrl,
+            responsetype: responsetype ?? task.responsetype ?? undefined,
+          },
+        })
+        successes.push(formatTaskResponse(updated))
+        pointsToDeduct += costByTask.get(task.id) ?? 0
+      } catch (error) {
+        const message = formatError(error)
+        const updated = await prisma.stockOrderTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'error',
+            latestMessage: message,
+          },
+        })
+        failures.push({ taskId: task.id, error: message })
+        successes.push(formatTaskResponse(updated))
+      }
+    }
+
+    if (pointsToDeduct > 0) {
+      await prisma.userBalance.update({
+        where: { userId },
+        data: { points: Math.max(balance.points - pointsToDeduct, 0) },
+      })
+    }
+
+    const updatedBalance = await prisma.userBalance.findUnique({ where: { userId } })
+
+    return res.json({
+      balance: { userId, points: updatedBalance?.points ?? 0 },
+      tasks: successes,
+      failures,
+      pointsDeducted: pointsToDeduct,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
 // GET /stock/sites -> list supported sites/pricing
 router.get('/sites', async (_req, res, next) => {
   try {

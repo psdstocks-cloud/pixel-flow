@@ -177,10 +177,122 @@ export async function downloadOrder(taskId: string, options: StockDownloadOption
   return fetch(url, { headers: { Accept: 'application/json' } })
 }
 
+export type StockTask = {
+  taskId: string
+  externalTaskId?: string
+  status?: string
+  title?: string
+  previewUrl?: string
+  thumbnailUrl?: string
+  costPoints?: number
+  costAmount?: number
+  costCurrency?: string
+  latestMessage?: string
+  downloadUrl?: string
+  site?: string
+  assetId?: string
+  responsetype?: string
+  batchId?: string
+  createdAt: string
+  updatedAt: string
+  sourceUrl?: string
+}
+
+export type StockBalance = {
+  userId: string
+  points: number
+  updatedAt?: string
+}
+
+export type PreviewRequestItem = {
+  url?: string
+  site?: string
+  id?: string
+}
+
+export type PreviewResponseItem = {
+  task?: StockTask
+  error?: string
+}
+
+export type PreviewResponse = {
+  balance: StockBalance
+  results: PreviewResponseItem[]
+}
+
+export type OrderCommitResponse = {
+  balance: StockBalance
+  tasks: StockTask[]
+  failures: Array<{ taskId: string; error: string }>
+  pointsDeducted: number
+}
+
+export function fetchBalance(userId: string, signal?: AbortSignal) {
+  return fetch(withBase(`/stock/balance/${encodeURIComponent(userId)}`), {
+    headers: { Accept: 'application/json' },
+    signal,
+  }).then<StockBalance>(handleResponse)
+}
+
+export function adjustBalance(userId: string, deltaPoints: number) {
+  return fetch(withBase(`/stock/balance/${encodeURIComponent(userId)}/adjust`), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ deltaPoints }),
+  }).then<StockBalance>(handleResponse)
+}
+
+export function fetchTasks(params: { userId: string; limit?: number }, signal?: AbortSignal) {
+  const url = new URL(withBase('/stock/tasks'))
+  url.searchParams.set('userId', params.userId)
+  if (params.limit != null) url.searchParams.set('limit', String(params.limit))
+  return fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal,
+  })
+    .then<{ tasks: StockTask[] }>(handleResponse)
+    .then((data) => data.tasks)
+}
+
+export function previewOrder(payload: {
+  userId: string
+  items: PreviewRequestItem[]
+  responsetype?: StockOrderPayload['responsetype']
+}) {
+  return fetch(withBase('/stock/order/preview'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }).then<PreviewResponse>(handleResponse)
+}
+
+export function commitOrder(payload: {
+  userId: string
+  taskIds: string[]
+  responsetype?: StockOrderPayload['responsetype']
+}) {
+  return fetch(withBase('/stock/order/commit'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }).then<OrderCommitResponse>(handleResponse)
+}
+
 export const queries = {
   sites: ['stock', 'sites'] as const,
   info: (key: StockInfoRequest) => ['stock', 'info', key] as const,
   orderStatus: (taskId: string) => ['stock', 'order', taskId, 'status'] as const,
+  balance: (userId: string) => ['stock', 'balance', userId] as const,
+  tasks: (userId: string) => ['stock', 'tasks', userId] as const,
 }
 
 export { detectSiteAndIdFromUrl, type SiteIdDetection, DETECTION_RULES } from './detection'
