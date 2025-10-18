@@ -20,6 +20,7 @@ import {
   type StockSite,
   type StockStatusResponse,
   detectSiteAndIdFromUrl,
+  buildDownloadUrl,
 } from '../../../lib/stock'
 
 type FormValues = {
@@ -261,6 +262,15 @@ export default function StockOrderPage() {
       ? statusSnapshot.progress
       : undefined
   const currentDownloadUrl = statusSnapshot?.downloadUrl as string | undefined
+  const downloadHref = (() => {
+    const taskId = activeTaskId ?? latestSuccess?.taskId
+    if (!taskId) return undefined
+    if (currentDownloadUrl) return currentDownloadUrl
+    if ((statusSnapshot?.status ?? latestSuccess?.status) === 'ready') {
+      return buildDownloadUrl(taskId, formValues.responsetype)
+    }
+    return undefined
+  })()
   const queuedAt = latestSuccess?.queuedAt ? new Date(latestSuccess.queuedAt).toLocaleString() : null
   const lastUpdated = statusSnapshot
     ? new Date(orderStatusQuery.dataUpdatedAt || Date.now()).toLocaleString()
@@ -472,9 +482,9 @@ export default function StockOrderPage() {
                 {typeof currentProgress === 'number' ? (
                   <p style={{ margin: 0 }}>Progress: {Math.round(currentProgress)}%</p>
                 ) : null}
-                {currentDownloadUrl ? (
+                {downloadHref ? (
                   <a
-                    href={currentDownloadUrl}
+                    href={downloadHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: '#0ea5e9', fontWeight: 600 }}

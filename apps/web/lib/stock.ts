@@ -96,3 +96,10 @@ export async function getOrderStatus(
 
 export { detectSiteAndIdFromUrl };
 
+export function buildDownloadUrl(taskId: string, responsetype: NonNullable<StockOrderPayload['responsetype']> = 'any') {
+  const params = new URLSearchParams()
+  if (responsetype) params.set('responsetype', responsetype)
+  params.set('redirect', 'true')
+  return `${API_BASE}/api/stock/order/${encodeURIComponent(taskId)}/download?${params.toString()}`
+}
+
