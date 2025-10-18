@@ -656,7 +656,26 @@ router.post('/order', async (req, res, next) => {
 
     // Upstream only supports GET; send as query params
     const r = await fetch(fullUrl, { headers: withApiKey() })
-    return respondByContentType(r, res)
+    if (!r.ok) {
+      const text = await r.text()
+      throw new Error(text || `Failed to queue stock order (status ${r.status}).`)
+    }
+    const data = (await r.json()) as Record<string, unknown>
+    const taskId = typeof data.task_id === 'string' ? data.task_id : undefined
+    const status = typeof data.status === 'string' ? data.status : undefined
+    const message = typeof data.message === 'string' ? data.message : undefined
+    const queuedAt = typeof data.queued_at === 'string' ? data.queued_at : undefined
+    const success = typeof data.success === 'boolean' ? data.success : undefined
+    const actions = data.actions
+
+    return res.json({
+      success: success ?? true,
+      taskId,
+      status,
+      message,
+      queuedAt,
+      actions,
+    })
   } catch (err) {
     next(err)
   }
