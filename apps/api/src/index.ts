@@ -1,28 +1,48 @@
-import 'dotenv/config'
-import express from 'express'
-import cors from 'cors'
-import morgan from 'morgan'
-import stockRouter from './routes/stock'
+import express from 'express';
+import cors from 'cors'; // Import the cors package
+import stockRoutes from './routes/stock';
+import db from './db'; // Corrected the import statement
 
-const app = express()
-app.use(cors())
-app.use(express.json({ limit: '1mb' }))
-app.use(morgan('dev'))
+const app = express();
+const port = process.env.PORT || 4000;
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'pixel-flow-api' })
-})
+// CORS Configuration
+// This allows your frontend (Vercel) to communicate with your backend (Railway).
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+};
 
-// Feature routers
-app.use('/stock', stockRouter)
+app.use(cors(corsOptions)); // Use the cors middleware
 
-// Global error handler
-app.use((err: unknown, _req: express.Request, res: express.Response) => {
-  console.error(err)
-  res.status(500).json({ error: 'Internal Server Error' })
-})
+app.use(express.json());
 
-const port = process.env.PORT || 4000
+// Health check for Railway
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Your API routes
+app.use('/api/stock', stockRoutes);
+
+// Test database connection
+app.get('/api/health/db', async (req, res) => {
+  try {
+    await db.$connect();
+    res.status(200).json({ status: 'ok', message: 'Database connected' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Database connection failed' });
+  } finally {
+    await db.$disconnect();
+  }
+});
+
 app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`)
-})
+  console.log(`API listening on http://localhost:${port}`);
+  if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL is not set. Database operations will fail.');
+  }
+  if (!process.env.NEHTW_API_KEY) {
+    console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.');
+  }
+});
+
