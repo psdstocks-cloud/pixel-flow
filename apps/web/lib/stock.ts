@@ -1,298 +1,99 @@
-
-// apps/web/lib/stock.ts
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://pixel-flow-production.up.railway.app'
-
-const withBase = (path: string) =>
-  path.startsWith('http') ? path : `${API_BASE_URL.replace(/\/$/, '')}${path}`
-
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (res.ok) {
-    return (await res.json()) as T
-  }
-
-  const raw = await res.text()
-  let parsed: unknown = raw
-  if (raw) {
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      parsed = raw
-    }
-  }
-
-  const message =
-    typeof parsed === 'string'
-      ? parsed
-      : JSON.stringify(parsed, null, 2) || res.statusText
-
-  throw new Error(message || res.statusText)
-}
+import { detectSiteAndIdFromUrl } from './detection';
 
 export type StockSite = {
-  site: string
-  displayName?: string
-  categories?: string[]
-  minPrice?: number
-  currency?: string
-  active?: boolean
-  price?: number
-}
+  site: string;
+  displayName?: string;
+  price?: number;
+  minPrice?: number;
+  currency?: string;
+  active?: boolean;
+};
 
-type RawSiteEntry = {
-  displayName?: string
-  categories?: string[]
-  minPrice?: number
-  currency?: string
-  active?: boolean
-  price?: number
-} | string | null | undefined
-
-type RawSitesResponse = Record<string, RawSiteEntry>
-
-export type StockInfoRequest = {
-  site?: string
-  id?: string
-  url?: string
-}
-
-export type StockInfoResult = {
-  site?: string
-  id?: string
-  url?: string
-  price?: number
-  cost?: number
-  points?: number
-  currency?: string
-  title?: string
-  name?: string
-  message?: string
-  status?: string
-  thumb?: string
-  thumbnail?: string
-  preview?: string
-  image?: string
-  [key: string]: unknown
-}
-
-export type StockOrderPayload = StockInfoRequest & {
-  responsetype?: 'any' | 'gdrive' | 'asia' | 'mydrivelink'
-  notificationChannel?: string
-}
+export type StockOrderPayload = {
+  site?: string;
+  id?: string;
+  url?: string;
+  responsetype?: 'any' | 'gdrive' | 'asia' | 'mydrivelink';
+  notificationChannel?: string;
+};
 
 export type StockOrderResponse = {
-  taskId?: string
-  status?: string
-  message?: string
-  queuedAt?: string
-  [key: string]: unknown
-}
+  success: boolean;
+  taskId?: string;
+  status?: string;
+  message?: string;
+  queuedAt?: string;
+};
 
 export type StockStatusResponse = {
-  status: string
-  progress?: number
-  downloadUrl?: string
-  files?: Array<{
-    name?: string
-    url?: string
-  }>
-  [key: string]: unknown
-}
+  status: string;
+  progress?: number;
+  message?: string;
+  downloadUrl?: string;
+};
 
-export type StockDownloadOptions = {
-  responsetype?: 'any' | 'gdrive' | 'asia' | 'mydrivelink'
-  redirect?: boolean
-  follow?: boolean
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
+const API_KEY = process.env.NEXT_PUBLIC_NEHTW_API_KEY;
 
-export function fetchSites(signal?: AbortSignal) {
-  return fetch(withBase('/stock/sites'), {
-    headers: { Accept: 'application/json' },
-    signal,
-  })
-    .then<RawSitesResponse>(handleResponse)
-    .then((data) =>
-      Object.entries(data)
-        .filter(([, value]) => typeof value === 'object' && value !== null)
-        .map<StockSite>(([site, value]) => {
-          const entry = value as Exclude<RawSiteEntry, string | null | undefined>
-          return {
-            site,
-            displayName: entry.displayName,
-            categories: entry.categories,
-            minPrice: entry.minPrice,
-            currency: entry.currency,
-            active: entry.active,
-            price: entry.price,
-          }
-        })
-        .sort((a, b) => a.site.localeCompare(b.site)),
-    )
-}
+async function apiFetch<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const url = `${API_BASE}/api${endpoint}`;
+  const headers = new Headers(options.headers || {});
+  
+  // *** THIS IS THE FIX ***
+  // The backend expects the API key in the 'X-Api-Key' header.
+  if (API_KEY) {
+    headers.set('X-Api-Key', API_KEY);
+  }
 
-export function fetchInfo(params: StockInfoRequest, signal?: AbortSignal) {
-  const url = new URL(withBase('/stock/info'))
-  Object.entries(params).forEach(([key, value]) => {
-    if (value) url.searchParams.set(key, value)
-  })
-  return fetch(url, { headers: { Accept: 'application/json' }, signal }).then<StockInfoResult>(handleResponse)
-}
+  const response = await fetch(url, { ...options, headers });
 
-export function createOrder(body: StockOrderPayload, signal?: AbortSignal) {
-  return fetch(withBase('/stock/order'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  }).then<StockOrderResponse>(handleResponse)
-}
+  if (!response.ok) {
+    let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string') {
+        errorMessage = errorBody.message;
+      }
+    } catch (e) {
+      // Ignore if response is not JSON
+    }
+    throw new Error(errorMessage);
+  }
 
-export function getOrderStatus(taskId: string, params: StockDownloadOptions = {}, signal?: AbortSignal) {
-  const url = new URL(withBase(`/stock/order/${encodeURIComponent(taskId)}/status`))
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined) url.searchParams.set(key, String(value))
-  })
-  return fetch(url, { headers: { Accept: 'application/json' }, signal }).then<StockStatusResponse>(handleResponse)
-}
-
-export function confirmOrder(taskId: string, body: { responsetype?: StockOrderPayload['responsetype'] } = {}, signal?: AbortSignal) {
-  return fetch(withBase(`/stock/order/${encodeURIComponent(taskId)}/confirm`), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body ?? {}),
-    signal,
-  }).then<StockStatusResponse>(handleResponse)
-}
-
-export async function downloadOrder(taskId: string, options: StockDownloadOptions = {}) {
-  const url = new URL(withBase(`/stock/order/${encodeURIComponent(taskId)}/download`))
-  Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined) url.searchParams.set(key, String(value))
-  })
-  return fetch(url, { headers: { Accept: 'application/json' } })
-}
-
-export type StockTask = {
-  taskId: string
-  externalTaskId?: string
-  status?: string
-  title?: string
-  previewUrl?: string
-  thumbnailUrl?: string
-  costPoints?: number
-  costAmount?: number
-  costCurrency?: string
-  latestMessage?: string
-  downloadUrl?: string
-  site?: string
-  assetId?: string
-  responsetype?: string
-  batchId?: string
-  createdAt: string
-  updatedAt: string
-  sourceUrl?: string
-}
-
-export type StockBalance = {
-  userId: string
-  points: number
-  updatedAt?: string
-}
-
-export type PreviewRequestItem = {
-  url?: string
-  site?: string
-  id?: string
-}
-
-export type PreviewResponseItem = {
-  task?: StockTask
-  error?: string
-}
-
-export type PreviewResponse = {
-  balance: StockBalance
-  results: PreviewResponseItem[]
-}
-
-export type OrderCommitResponse = {
-  balance: StockBalance
-  tasks: StockTask[]
-  failures: Array<{ taskId: string; error: string }>
-  pointsDeducted: number
-}
-
-export function fetchBalance(userId: string, signal?: AbortSignal) {
-  return fetch(withBase(`/stock/balance/${encodeURIComponent(userId)}`), {
-    headers: { Accept: 'application/json' },
-    signal,
-  }).then<StockBalance>(handleResponse)
-}
-
-export function adjustBalance(userId: string, deltaPoints: number) {
-  return fetch(withBase(`/stock/balance/${encodeURIComponent(userId)}/adjust`), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ deltaPoints }),
-  }).then<StockBalance>(handleResponse)
-}
-
-export function fetchTasks(params: { userId: string; limit?: number }, signal?: AbortSignal) {
-  const url = new URL(withBase('/stock/tasks'))
-  url.searchParams.set('userId', params.userId)
-  if (params.limit != null) url.searchParams.set('limit', String(params.limit))
-  return fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal,
-  })
-    .then<{ tasks: StockTask[] }>(handleResponse)
-    .then((data) => data.tasks)
-}
-
-export function previewOrder(payload: {
-  userId: string
-  items: PreviewRequestItem[]
-  responsetype?: StockOrderPayload['responsetype']
-}) {
-  return fetch(withBase('/stock/order/preview'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  }).then<PreviewResponse>(handleResponse)
-}
-
-export function commitOrder(payload: {
-  userId: string
-  taskIds: string[]
-  responsetype?: StockOrderPayload['responsetype']
-}) {
-  return fetch(withBase('/stock/order/commit'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  }).then<OrderCommitResponse>(handleResponse)
+  return response.json() as Promise<T>;
 }
 
 export const queries = {
-  sites: ['stock', 'sites'] as const,
-  info: (key: StockInfoRequest) => ['stock', 'info', key] as const,
-  orderStatus: (taskId: string) => ['stock', 'order', taskId, 'status'] as const,
-  balance: (userId: string) => ['stock', 'balance', userId] as const,
-  tasks: (userId: string) => ['stock', 'tasks', userId] as const,
+  sites: ['stock', 'sites'],
+  orderStatus: (taskId: string) => ['stock', 'order', 'status', taskId],
+};
+
+export async function fetchSites(signal?: AbortSignal): Promise<StockSite[]> {
+  const data = await apiFetch<{ sites: StockSite[] }>('/stock/sites', { signal });
+  return data.sites;
 }
 
-export { detectSiteAndIdFromUrl, type SiteIdDetection, DETECTION_RULES } from './detection'
+export async function createOrder(
+  payload: StockOrderPayload,
+): Promise<StockOrderResponse> {
+  return apiFetch<StockOrderResponse>('/stock/order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getOrderStatus(
+  taskId: string,
+  _?: unknown, // Placeholder for potential future params
+  signal?: AbortSignal,
+): Promise<StockStatusResponse> {
+  return apiFetch<StockStatusResponse>(`/stock/order/${taskId}/status`, {
+    signal,
+  });
+}
+
+export { detectSiteAndIdFromUrl };
