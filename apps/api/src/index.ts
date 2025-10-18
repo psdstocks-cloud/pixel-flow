@@ -44,6 +44,7 @@ app.get('/api/health/db', async (req, res) => {
     await db.$connect();
     res.status(200).json({ status: 'ok', message: 'Database connected' });
   } catch (error) {
+    console.error('Database connection check failed', error)
     res.status(500).json({ status: 'error', message: 'Database connection failed' });
   } finally {
     await db.$disconnect();
