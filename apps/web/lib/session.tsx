@@ -37,7 +37,7 @@ async function fetchSessionFromApi(): Promise<SessionState | null> {
       nextPaymentDue: body?.user?.nextPaymentDue ?? null,
     }
   } catch (error) {
-    if (DEFAULT_USER_ID) {
+    if (process.env.NODE_ENV === 'development' && DEFAULT_USER_ID) {
       return { userId: DEFAULT_USER_ID }
     }
     throw error instanceof Error ? error : new Error('Unknown session error')
