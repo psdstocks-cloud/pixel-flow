@@ -13,16 +13,13 @@ COPY packages/database/package*.json ./packages/database/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
 
-# Copy Prisma schema (needed for postinstall script)
-COPY packages/database/prisma ./packages/database/prisma
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
+# Copy source code (needed for postinstall script that runs tsc)
 COPY packages/database ./packages/database
 COPY apps/api ./apps/api
 COPY apps/web ./apps/web
+
+# Install dependencies (postinstall will run prisma generate + build)
+RUN npm ci
 
 # Build all packages
 RUN npm run build
