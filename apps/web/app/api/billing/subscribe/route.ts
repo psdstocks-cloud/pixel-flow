@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { authOptions } from '../../auth/[...nextauth]/route'
+import { authOptions } from '../../../lib/auth-options'
 import { createSubscription, getPackageById } from '@pixel-flow/database/subscription'
 
 const subscribeSchema = z.object({
