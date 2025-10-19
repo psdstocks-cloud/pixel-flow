@@ -5,7 +5,7 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "ls -la apps/api/dist/ && echo 'Starting server...' && node apps/api/dist/index.js",
+    "startCommand": "npm run start:api",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE"

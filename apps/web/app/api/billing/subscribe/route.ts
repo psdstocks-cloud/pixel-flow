@@ -3,6 +3,8 @@ import { stripe } from "../../../../lib/billing";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 function absoluteUrl(path: string) {
   if (typeof window !== "undefined") return path;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}${path}`;
