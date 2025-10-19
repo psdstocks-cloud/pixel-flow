@@ -3,23 +3,28 @@ console.log('🚀 Starting Pixel Flow API server...')
 import express from 'express'
 import cors from 'cors'
 
-let stockRoutes
-try {
-  console.log('📦 Loading stock routes...')
-  stockRoutes = require('./routes/stock').default
-  console.log('✅ Stock routes loaded successfully')
-} catch (error) {
-  console.error('❌ Failed to load stock routes:', error instanceof Error ? error.message : String(error))
-  stockRoutes = null
-}
-let db
-try {
-  console.log('📦 Loading database module...')
-  db = require('./db').default
-  console.log('✅ Database module loaded successfully')
-} catch (error) {
-  console.warn('❌ Database module not available:', error instanceof Error ? error.message : String(error))
-  db = null
+// Dynamic import for stock routes to handle loading errors
+let stockRoutes: any = null
+let db: any = null
+
+async function loadModules() {
+  try {
+    console.log('📦 Loading stock routes...')
+    const stockModule = await import('./routes/stock')
+    stockRoutes = stockModule.default
+    console.log('✅ Stock routes loaded successfully')
+  } catch (error) {
+    console.error('❌ Failed to load stock routes:', error instanceof Error ? error.message : String(error))
+  }
+
+  try {
+    console.log('📦 Loading database module...')
+    const dbModule = await import('./db')
+    db = dbModule.default
+    console.log('✅ Database module loaded successfully')
+  } catch (error) {
+    console.error('❌ Database module not available:', error instanceof Error ? error.message : String(error))
+  }
 }
 
 const app = express()
@@ -47,39 +52,41 @@ app.use(
   }),
 ) // Use the cors middleware
 
-app.use(express.json())
+// Initialize modules and start server
+async function startServer() {
+  await loadModules()
 
-// Health check for Railway
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' })
-})
+  // Continue with server setup...
+  app.use(express.json())
 
-// Your API routes
-if (stockRoutes) {
-  app.use('/api/stock', stockRoutes)
-} else {
-  console.warn('Stock routes not available - API will be limited')
-}
+  // Health check for Railway
+  app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' })
+  })
 
-// Test database connection
-app.get('/api/health/db', async (req, res) => {
-  if (!db) {
-    return res.status(503).json({ status: 'error', message: 'Database module not available' });
+  // Your API routes
+  if (stockRoutes) {
+    app.use('/api/stock', stockRoutes)
+  } else {
+    console.warn('Stock routes not available - API will be limited')
   }
-  try {
-    await db.$connect();
-    res.status(200).json({ status: 'ok', message: 'Database connected' });
-  } catch (error) {
-    console.error('Database connection check failed', error)
-    res.status(500).json({ status: 'error', message: 'Database connection failed' });
-  } finally {
-    await db.$disconnect();
-  }
-});
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`API listening on 0.0.0.0:${port}`);
-  console.log(`Health check available at http://0.0.0.0:${port}/health`);
+  // Test database connection
+  app.get('/api/health/db', async (req, res) => {
+    if (!db) {
+      return res.status(503).json({ status: 'error', message: 'Database module not available' });
+    }
+    try {
+      await db.$connect();
+      res.status(200).json({ status: 'ok', message: 'Database connected' });
+    } catch (error) {
+      console.error('Database connection check failed', error)
+      res.status(500).json({ status: 'error', message: 'Database connection failed' });
+    } finally {
+      await db.$disconnect();
+    }
+  });
+
   console.log(`Environment:`, {
     NODE_ENV: process.env.NODE_ENV,
     PORT: process.env.PORT,
@@ -87,21 +94,34 @@ app.listen(port, '0.0.0.0', () => {
     NEHTW_API_KEY: process.env.NEHTW_API_KEY ? 'SET' : 'NOT SET',
     CORS_ORIGIN: process.env.CORS_ORIGIN
   });
+
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL is not set. Database operations will fail.');
   }
   if (!process.env.NEHTW_API_KEY) {
     console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.');
   }
-}).on('error', (error: any) => {
-  console.error('Failed to start server:', error);
-  console.error('Error details:', {
-    code: error.code,
-    errno: error.errno,
-    syscall: error.syscall,
-    address: error.address,
-    port: error.port
+
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`API listening on 0.0.0.0:${port}`);
+    console.log(`Health check available at http://0.0.0.0:${port}/health`);
+  }).on('error', (error: any) => {
+    console.error('Failed to start server:', error);
+    console.error('Error details:', {
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      address: error.address,
+      port: error.port
+    });
+    process.exit(1);
   });
+}
+
+console.log('🚀 Starting Pixel Flow API server...')
+
+// Start the server immediately and load modules asynchronously
+startServer().catch((error) => {
+  console.error('Fatal error starting server:', error);
   process.exit(1);
 });
-
