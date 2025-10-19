@@ -42,11 +42,11 @@ COPY packages/database/package*.json ./packages/database/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
 
-# Copy Prisma schema (needed for postinstall script)
+# Copy Prisma schema (needed for Prisma Client at runtime)
 COPY packages/database/prisma ./packages/database/prisma
 
-# Install production dependencies only
-RUN npm ci --omit=dev
+# Install production dependencies only (skip postinstall scripts - we copy built files instead)
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy built artifacts from base stage
 COPY --from=base /app/packages/database/dist ./packages/database/dist
