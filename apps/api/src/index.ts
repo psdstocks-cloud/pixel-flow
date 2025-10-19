@@ -63,14 +63,28 @@ app.get('/api/health/db', async (req, res) => {
 app.listen(port, '0.0.0.0', () => {
   console.log(`API listening on 0.0.0.0:${port}`);
   console.log(`Health check available at http://0.0.0.0:${port}/health`);
+  console.log(`Environment:`, {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+    NEHTW_API_KEY: process.env.NEHTW_API_KEY ? 'SET' : 'NOT SET',
+    CORS_ORIGIN: process.env.CORS_ORIGIN
+  });
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL is not set. Database operations will fail.');
   }
   if (!process.env.NEHTW_API_KEY) {
     console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.');
   }
-}).on('error', (error) => {
+}).on('error', (error: any) => {
   console.error('Failed to start server:', error);
+  console.error('Error details:', {
+    code: error.code,
+    errno: error.errno,
+    syscall: error.syscall,
+    address: error.address,
+    port: error.port
+  });
   process.exit(1);
 });
 
