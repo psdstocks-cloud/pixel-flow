@@ -148,6 +148,18 @@ export type DownloadOrderResponse = {
   };
 };
 
+export type DownloadHistoryResponse = {
+  downloads: StockOrderTask[];
+};
+
+export type RedownloadResponse = {
+  download: {
+    taskId: string;
+    downloadUrl?: string;
+    fileName?: string;
+  };
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 const API_KEY = process.env.NEXT_PUBLIC_NEHTW_API_KEY;
 
@@ -212,6 +224,14 @@ export const queries = {
   orderStatus: (taskId: string) => ['stock', 'order', 'status', taskId],
   balance: (userId: string) => ['stock', 'balance', userId],
   tasks: (userId: string, limit?: number) => ['stock', 'tasks', userId, limit ?? 'default'],
+  downloadsHistory: (userId: string, limit?: number, status?: string | null) => [
+    'stock',
+    'downloads',
+    'history',
+    userId,
+    limit ?? 'default',
+    status ?? 'all',
+  ],
 };
 
 export async function fetchSites(signal?: AbortSignal): Promise<StockSite[]> {
@@ -255,6 +275,36 @@ export async function fetchTasks(userId: string, limit?: number, signal?: AbortS
     headers: withUserId(userId),
   });
   return data.tasks;
+}
+
+export async function fetchDownloadHistory(
+  userId: string,
+  limit?: number,
+  status?: string,
+  signal?: AbortSignal,
+): Promise<DownloadHistoryResponse> {
+  const endpoint = withQuery('/stock/downloads/history', {
+    userId,
+    limit,
+    status,
+  });
+  return apiFetch<DownloadHistoryResponse>(endpoint, {
+    signal,
+    headers: withUserId(userId),
+  });
+}
+
+export async function requestRedownload(
+  taskId: string,
+  userId: string,
+  responsetype?: ResponseType,
+): Promise<RedownloadResponse> {
+  const endpoint = withQuery(`/stock/downloads/${encodeURIComponent(taskId)}`, {
+    responsetype,
+  });
+  return apiFetch<RedownloadResponse>(endpoint, {
+    headers: withUserId(userId),
+  });
 }
 
 export async function previewOrder(payload: PreviewOrderPayload): Promise<PreviewOrderResponse> {

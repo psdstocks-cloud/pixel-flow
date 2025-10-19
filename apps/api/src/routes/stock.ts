@@ -150,8 +150,8 @@ function badRequest(res: express.Response, issues: z.ZodIssue[]) {
 
 function ensureAuthorizedUser(req: AuthenticatedRequest, userId: string) {
   if (!req.user || req.user.id !== userId) {
-    const error = new Error('Cannot act on behalf of another user.')
-    ;(error as { status: number }).status = 403
+    const error = new Error('Cannot act on behalf of another user.') as Error & { status?: number }
+    error.status = 403
     throw error
   }
 }
