@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
@@ -16,7 +16,7 @@ const loginSchema = z.object({
 
 type LoginFormState = z.infer<typeof loginSchema>
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { session, status, refresh } = useSession()
@@ -133,5 +133,13 @@ export default function LoginPage() {
         />
       ) : null}
     </section>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<section className="auth-card" />}>
+      <LoginPageContent />
+    </Suspense>
   )
 }
