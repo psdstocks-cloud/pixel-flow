@@ -13,6 +13,9 @@ COPY packages/database/package*.json ./packages/database/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
 
+# Copy Prisma schema (needed for postinstall script)
+COPY packages/database/prisma ./packages/database/prisma
+
 # Install dependencies
 RUN npm ci
 
@@ -39,6 +42,9 @@ COPY packages/database/package*.json ./packages/database/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
 
+# Copy Prisma schema (needed for postinstall script)
+COPY packages/database/prisma ./packages/database/prisma
+
 # Install production dependencies only
 RUN npm ci --omit=dev
 
@@ -48,9 +54,6 @@ COPY --from=base /app/apps/api/dist ./apps/api/dist
 COPY --from=base /app/apps/web/.next ./apps/web/.next
 COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=base /app/node_modules/@prisma ./node_modules/@prisma
-
-# Copy Prisma schema (needed for runtime)
-COPY packages/database/prisma ./packages/database/prisma
 
 # Expose port (Railway will set PORT env var)
 EXPOSE 4000
