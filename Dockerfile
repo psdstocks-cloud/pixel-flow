@@ -25,12 +25,6 @@ RUN npm ci
 # Build all packages
 RUN npm run build
 
-# Debug: List what was built
-RUN echo "=== Files in base stage after build ===" && \
-    ls -la /app/apps/api/ && \
-    echo "=== Contents of apps/api/dist ===" && \
-    ls -la /app/apps/api/dist/ || echo "dist folder not found!"
-
 # Production stage
 FROM node:22-slim AS production
 
