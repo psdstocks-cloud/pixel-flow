@@ -19,19 +19,27 @@
       "require": "./dist/balance.js",
       "default": "./dist/balance.js"
     },
+    "./subscription": {
+      "types": "./dist/subscription.d.ts",
+      "import": "./dist/subscription.js",
+      "require": "./dist/subscription.js",
+      "default": "./dist/subscription.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev --name init --schema=prisma/schema.prisma",
-    "migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma"
+    "migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.17.0"
   },
   "devDependencies": {
     "prisma": "^5.17.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.4.5"
   }
 }

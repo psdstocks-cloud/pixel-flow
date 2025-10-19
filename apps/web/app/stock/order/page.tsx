@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, Field, StatusBadge, Toast } from '../../../components'
 import {
@@ -564,9 +565,17 @@ export default function StockOrderPage() {
                 <span style={{ fontSize: 32, fontWeight: 600 }}>{balanceQuery.data.points} pts</span>
                 <span className="status-meta">User ID: {balanceQuery.data.userId}</span>
                 <span className="status-meta">Next payment: {nextPaymentLabel}</span>
+                <Link href="/billing" className="link-button" style={{ marginTop: 8 }}>
+                  Manage subscription
+                </Link>
               </div>
             ) : (
-              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>Purchase a package to load your balance.</p>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>Purchase a package to load your balance.</p>
+                <Link href="/billing" className="primary">
+                  View packages
+                </Link>
+              </div>
             )}
           </>
         </Card>

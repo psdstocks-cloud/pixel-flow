@@ -35,7 +35,18 @@ function LoginPageContent() {
     if (status === 'ready' && session?.userId) {
       router.replace(callbackUrl)
     }
-  }, [status, session?.userId, router, callbackUrl])
+
+    // Handle verification messages
+    const verified = searchParams.get('verified')
+    const error = searchParams.get('error')
+    const message = searchParams.get('message')
+
+    if (verified === 'true') {
+      setFeedback({ type: 'success', message: 'Email verified successfully! Please sign in.' })
+    } else if (error === 'verification_failed') {
+      setFeedback({ type: 'error', message: message || 'Email verification failed. Please try again.' })
+    }
+  }, [status, session?.userId, router, callbackUrl, searchParams])
 
   const updateField = (field: keyof LoginFormState, value: string | boolean) => {
     setFormErrors((prev) => {

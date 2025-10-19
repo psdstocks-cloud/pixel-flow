@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createUser, findUserByEmail } from '../../../../lib/auth'
+import { createUser, findUserByEmail, createVerificationToken } from '../../../../lib/auth'
+import { sendVerificationEmail } from '../../../../lib/email'
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -29,6 +30,11 @@ export async function POST(request: Request) {
     }
 
     const user = await createUser({ email, password, name })
+    const verificationToken = await createVerificationToken(user.id)
+
+    // Send verification email
+    await sendVerificationEmail(email, verificationToken.token)
+
     return NextResponse.json(
       {
         user: {
