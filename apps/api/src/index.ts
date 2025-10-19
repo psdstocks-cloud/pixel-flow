@@ -1,11 +1,24 @@
+console.log('🚀 Starting Pixel Flow API server...')
+
 import express from 'express'
-import cors from 'cors' // Import the cors package
-import stockRoutes from './routes/stock'
+import cors from 'cors'
+
+let stockRoutes
+try {
+  console.log('📦 Loading stock routes...')
+  stockRoutes = require('./routes/stock').default
+  console.log('✅ Stock routes loaded successfully')
+} catch (error) {
+  console.error('❌ Failed to load stock routes:', error instanceof Error ? error.message : String(error))
+  stockRoutes = null
+}
 let db
 try {
+  console.log('📦 Loading database module...')
   db = require('./db').default
+  console.log('✅ Database module loaded successfully')
 } catch (error) {
-  console.warn('Database module not available:', error instanceof Error ? error.message : String(error))
+  console.warn('❌ Database module not available:', error instanceof Error ? error.message : String(error))
   db = null
 }
 
@@ -42,7 +55,11 @@ app.get('/health', (req, res) => {
 })
 
 // Your API routes
-app.use('/api/stock', stockRoutes)
+if (stockRoutes) {
+  app.use('/api/stock', stockRoutes)
+} else {
+  console.warn('Stock routes not available - API will be limited')
+}
 
 // Test database connection
 app.get('/api/health/db', async (req, res) => {
