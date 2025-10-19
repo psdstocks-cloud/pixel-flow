@@ -4,7 +4,7 @@ import stockRoutes from './routes/stock'
 import db from './db' // Corrected the import statement
 
 const app = express()
-const port = process.env.PORT || 4000
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000
 
 // CORS Configuration
 // This allows your frontend (Vercel) to communicate with your backend (Railway).
@@ -51,13 +51,17 @@ app.get('/api/health/db', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`API listening on 0.0.0.0:${port}`);
+  console.log(`Health check available at http://0.0.0.0:${port}/health`);
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL is not set. Database operations will fail.');
   }
   if (!process.env.NEHTW_API_KEY) {
     console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.');
   }
+}).on('error', (error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
 
