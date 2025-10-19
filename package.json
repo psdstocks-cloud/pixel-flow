@@ -15,7 +15,7 @@
     "start": "turbo run start",
     "start:api": "npm run build --workspace=api && npm start --workspace=api",
     "format": "prettier --write .",
-    "postinstall": "npm --prefix packages/database run generate"
+    "postinstall": "npm --prefix packages/database run generate && npm --prefix packages/database run build"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
