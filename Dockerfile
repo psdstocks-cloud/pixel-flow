@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 # Copy package files
 COPY package*.json ./
 COPY turbo.json ./
+COPY tsconfig.json ./
 COPY packages/database/package*.json ./packages/database/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
