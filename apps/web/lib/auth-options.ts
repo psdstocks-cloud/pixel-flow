@@ -1,4 +1,4 @@
-import NextAuth, { type NextAuthOptions } from 'next-auth'
+import { type NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { z } from 'zod'
 import { findUserByEmail, verifyPassword } from './auth'
