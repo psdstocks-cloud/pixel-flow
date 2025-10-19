@@ -53,7 +53,7 @@ export default function VerifyPage({ searchParams }: VerifyPageProps) {
 
           <div className="verification-help">
             <p className="help-text">
-              Didn't receive the email?
+              Didn&apos;t receive the email?
             </p>
             <ul className="help-list">
               <li>Check your spam or junk folder</li>
