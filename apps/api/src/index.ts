@@ -1,7 +1,13 @@
 import express from 'express'
 import cors from 'cors' // Import the cors package
 import stockRoutes from './routes/stock'
-import db from './db' // Corrected the import statement
+let db
+try {
+  db = require('./db').default
+} catch (error) {
+  console.warn('Database module not available:', error instanceof Error ? error.message : String(error))
+  db = null
+}
 
 const app = express()
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000
@@ -40,6 +46,9 @@ app.use('/api/stock', stockRoutes)
 
 // Test database connection
 app.get('/api/health/db', async (req, res) => {
+  if (!db) {
+    return res.status(503).json({ status: 'error', message: 'Database module not available' });
+  }
   try {
     await db.$connect();
     res.status(200).json({ status: 'ok', message: 'Database connected' });
