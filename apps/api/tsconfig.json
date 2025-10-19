@@ -4,6 +4,7 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "outDir": "dist",
+    "rootDir": "src",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
@@ -12,6 +13,6 @@
       "@pixel-flow/database": ["../../packages/database/src"]
     }
   },
-  "include": ["src/**/*.ts", "../../packages/database/src/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }
