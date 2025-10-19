@@ -5,7 +5,7 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "echo '=== Listing /app directory ===' && ls -la /app && echo '=== Listing apps/api ===' && ls -la apps/api && echo '=== Listing apps/api/dist ===' && ls -la apps/api/dist && echo '=== Starting server ===' && node apps/api/dist/index.js",
+    "startCommand": "find apps/api/dist -name 'index.js' -type f && INDEX_PATH=$(find apps/api/dist -name 'index.js' -type f | head -1) && echo \"Found index.js at: $INDEX_PATH\" && node \"$INDEX_PATH\"",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE"
