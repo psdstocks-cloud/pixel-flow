@@ -18,6 +18,10 @@
     "jsx": "preserve",
     "incremental": true,
     "baseUrl": ".",
+    "paths": {
+      "@pixel-flow/database": ["../../packages/database/src"],
+      "@pixel-flow/database/*": ["../../packages/database/src/*"]
+    },
     "plugins": [
       {
         "name": "next"

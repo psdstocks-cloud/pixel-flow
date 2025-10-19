@@ -437,6 +437,208 @@ textarea:focus-visible {
   outline-offset: 3px;
 }
 
+.landing {
+  width: min(1080px, 94vw);
+  margin: 0 auto;
+  display: grid;
+  gap: 64px;
+  padding: 72px 0 120px;
+}
+
+.hero {
+  display: grid;
+  gap: 28px;
+  position: relative;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  top: -80px;
+  left: -90px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.28), transparent 60%);
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: var(--pf-text);
+}
+
+.hero h1 {
+  font-size: clamp(40px, 5vw, 60px);
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.hero p {
+  max-width: 620px;
+  font-size: 18px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.hero-actions .primary,
+.hero-actions .secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  border-radius: var(--pf-radius-sm);
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.hero-actions .primary {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(168, 85, 247, 0.4));
+  border-color: rgba(56, 189, 248, 0.55);
+  color: var(--pf-text);
+  box-shadow: 0 18px 48px rgba(56, 189, 248, 0.3);
+}
+
+.hero-actions .secondary {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: var(--pf-text-muted);
+}
+
+.hero-actions .primary:hover,
+.hero-actions .secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 52px rgba(15, 23, 42, 0.28);
+}
+
+.hero-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.hero-grid article {
+  position: relative;
+  padding: 28px;
+  border-radius: var(--pf-radius-sm);
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(calc(var(--pf-blur) * 0.6));
+}
+
+.hero-grid article::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(56, 189, 248, 0.15), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.hero-grid article:hover::before {
+  opacity: 1;
+}
+
+.hero-grid h2 {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: 96px 24px 72px;
+  position: relative;
+}
+
+.auth-shell::after {
+  content: '';
+  position: absolute;
+  bottom: -60px;
+  right: -80px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.25), transparent 60%);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.auth-header {
+  width: min(460px, 92vw);
+  display: flex;
+  justify-content: center;
+  padding-bottom: 32px;
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--pf-text);
+  text-decoration: none;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-main {
+  width: min(520px, 92vw);
+}
+
+.auth-card {
+  display: grid;
+  gap: 24px;
+  padding: 36px 32px;
+  border-radius: var(--pf-radius-lg);
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(var(--pf-blur));
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.35);
+}
+
+.auth-card h1 {
+  font-size: 32px;
+}
+
+.auth-footer {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--pf-text-subtle);
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--pf-text-subtle);
+}
+
+.checkbox input {
+  accent-color: rgba(56, 189, 248, 0.8);
+  width: 18px;
+  height: 18px;
+}
+
 .tab-nav {
   display: flex;
   gap: 12px;
@@ -653,6 +855,28 @@ textarea:focus-visible {
 
   .tab-nav {
     flex-wrap: wrap;
+  }
+
+  .landing {
+    gap: 48px;
+    padding: 56px 0 96px;
+  }
+
+  .hero {
+    gap: 24px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .auth-shell {
+    padding: 72px 16px 60px;
+  }
+
+  .auth-card {
+    padding: 30px 24px;
   }
 }
 
