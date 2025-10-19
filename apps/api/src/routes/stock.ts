@@ -2,10 +2,19 @@ import express from 'express'
 import { Readable } from 'stream'
 import { z } from 'zod'
 import prisma from '../db'
+import {
+  InsufficientBalanceError,
+  getOrCreateBalance,
+  debitBalance,
+  creditBalance,
+} from '@pixel-flow/database'
+import { nehtwClient } from '../lib/nehtw'
+import { requireUser, optionalUser, AuthenticatedRequest } from '../middleware/auth'
 
 const router = express.Router()
 
 const ALLOWED_ORIGIN = process.env.STOCK_API_ALLOWED_ORIGIN || '*'
+const DEFAULT_NOTIFICATION_CHANNEL = process.env.NEHTW_NOTIFY
 
 router.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
@@ -14,16 +23,10 @@ router.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204)
   }
-  next()
+  return next()
 })
 
-const NEHTW_BASE = 'https://nehtw.com/api'
-const API_KEY = process.env.NEHTW_API_KEY
-
-if (!API_KEY) {
-  // eslint-disable-next-line no-console
-  console.warn('[stock] NEHTW_API_KEY is not set. Stock routes will fail until configured.')
-}
+router.use(optionalUser)
 
 function formatError(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
@@ -35,293 +38,10 @@ function formatError(error: unknown): string {
   }
 }
 
-type DownloadResponse = {
-  downloadLink?: string
-  link?: string
-  url?: string
-  downloadUrl?: string
-  fileName?: string
-}
-
-type FetchResponse = Awaited<ReturnType<typeof fetch>>
-type NodeReadableStream = import('node:stream/web').ReadableStream<Uint8Array>
-
-const DEFAULT_HEADERS: Record<string, string> = {
-  'User-Agent': 'pixel-flow/1.0 (+https://github.com/psdstocks-cloud/pixel-flow)',
-  Accept: 'application/json, */*;q=0.8',
-}
-
 const MAX_BULK_ITEMS = 5
 
-function withApiKey(headers: Record<string, string> = {}): Record<string, string> {
-  return {
-    ...DEFAULT_HEADERS,
-    ...headers,
-    'X-Api-Key': API_KEY || '',
-  }
-}
+type NodeReadableStream = import('node:stream/web').ReadableStream<Uint8Array>
 
-function buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>) {
-  const url = new URL(path.startsWith('http') ? path : `${NEHTW_BASE}${path}`)
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v))
-    }
-  }
-  return url.toString()
-}
-
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return null
-}
-
-function safeString(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    return trimmed.length > 0 ? trimmed : undefined
-  }
-  return undefined
-}
-
-function determineCostPoints(info: Record<string, unknown>): number | null {
-  const candidates = [info.points, info.cost, info.price]
-  for (const candidate of candidates) {
-    const numeric = toNumber(candidate)
-    if (numeric !== null) return Math.max(Math.ceil(numeric), 0)
-  }
-  return null
-}
-
-function determineCostAmount(info: Record<string, unknown>): number | null {
-  const candidates = [info.cost, info.price]
-  for (const candidate of candidates) {
-    const numeric = toNumber(candidate)
-    if (numeric !== null) return numeric
-  }
-  return null
-}
-
-function determineCurrency(info: Record<string, unknown>): string | undefined {
-  return safeString(info.currency) || safeString(info.currencyCode)
-}
-
-function pickPreviewUrl(info: Record<string, unknown>): string | undefined {
-  return (
-    safeString(info.preview) ||
-    safeString(info.thumbnail) ||
-    safeString(info.thumb) ||
-    safeString(info.image) ||
-    safeString(info.previewUrl)
-  )
-}
-
-function pickTitle(info: Record<string, unknown>): string | undefined {
-  return (
-    safeString(info.title) ||
-    safeString(info.name) ||
-    safeString(info.filename) ||
-    safeString(info.fileName) ||
-    safeString(info.message)
-  )
-}
-
-function pickThumbnail(info: Record<string, unknown>): string | undefined {
-  return safeString(info.thumbnail) || safeString(info.thumb) || safeString(info.previewThumb) || pickPreviewUrl(info)
-}
-
-function pickAssetId(info: Record<string, unknown>): string | undefined {
-  const direct =
-    safeString(info.assetId) ||
-    safeString(info.stockId) ||
-    safeString(info.asset) ||
-    safeString(info.fileId)
-  if (direct) return direct
-
-  const nestedAsset = info.asset as Record<string, unknown> | undefined
-  const nestedResult = info.result as Record<string, unknown> | undefined
-  return (
-    safeString(info.id) ||
-    safeString(nestedAsset?.id) ||
-    safeString(nestedResult?.id) ||
-    safeString(nestedResult?.taskId)
-  )
-}
-
-function computeSourceUrl(item: MultiLinkItem, info?: Record<string, unknown>): string {
-  const fromItem = item.url ? safeString(item.url) : undefined
-  const fromInfo = info
-    ? safeString(info.url) ||
-      safeString(info.link) ||
-      safeString(info.downloadUrl) ||
-      safeString(info.originalUrl)
-    : undefined
-  const fallbackSite = item.site && item.id ? `${item.site}:${item.id}` : undefined
-  return fromItem ?? fromInfo ?? fallbackSite ?? ''
-}
-
-function extractTaskIdFromResponse(data: Record<string, unknown>): string | null {
-  const candidates: Array<unknown> = [
-    data.taskId,
-    data.taskID,
-    data.id,
-    data.task,
-    (data.task as Record<string, unknown> | undefined)?.id,
-    (data.task as Record<string, unknown> | undefined)?.taskId,
-    (data.result as Record<string, unknown> | undefined)?.taskId,
-    (data.result as Record<string, unknown> | undefined)?.id,
-  ]
-
-  for (const candidate of candidates) {
-    if (candidate == null) continue
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim()
-      if (trimmed.length > 0) return trimmed
-    }
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return String(candidate)
-    }
-  }
-
-  return null
-}
-
-function resolveSite(item: MultiLinkItem, info?: Record<string, unknown>): string | undefined {
-  return item.site ?? (info ? safeString(info.site) : undefined)
-}
-
-async function getOrCreateUserBalance(userId: string) {
-  return prisma.userBalance.upsert({
-    where: { userId },
-    update: {},
-    create: { userId },
-  })
-}
-
-type StockOrderTaskModel = Awaited<ReturnType<typeof prisma.stockOrderTask.findMany>>[number]
-
-const HTTP_URL_REGEX = /^https?:\/\//i
-
-function formatTaskResponse(task: StockOrderTaskModel) {
-  return {
-    taskId: task.id,
-    externalTaskId: task.externalTaskId,
-    status: task.status,
-    title: task.title,
-    previewUrl: task.previewUrl,
-    thumbnailUrl: task.thumbnailUrl,
-    costPoints: task.costPoints ?? undefined,
-    costAmount: task.costAmount ?? undefined,
-    costCurrency: task.costCurrency ?? undefined,
-    latestMessage: task.latestMessage ?? undefined,
-    downloadUrl: task.downloadUrl ?? undefined,
-    site: task.site ?? undefined,
-    assetId: task.assetId ?? undefined,
-    responsetype: task.responsetype ?? undefined,
-    batchId: task.batchId ?? undefined,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-    sourceUrl: task.sourceUrl,
-  }
-}
-
-async function fetchInfoForItem(item: MultiLinkItem, responsetype?: string) {
-  const hasSiteId = Boolean(item.site && item.id)
-  const path = hasSiteId ? `/stockinfo/${encodeURIComponent(item.site!)}/${encodeURIComponent(item.id!)}` : '/stockinfo'
-  const queryParams: Record<string, string | number | boolean | undefined> = {}
-  if (item.url) queryParams.url = item.url
-  if (item.site) queryParams.site = item.site
-  if (item.id) queryParams.id = item.id
-  if (responsetype) queryParams.responsetype = responsetype
-  const url = buildUrl(path, queryParams)
-  const response = await fetch(url, { headers: withApiKey() })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text || `Failed to fetch stock info (status ${response.status}).`)
-  }
-  const data = (await response.json()) as Record<string, unknown>
-  if (!determineCostPoints(data) && process.env.NODE_ENV !== 'production') {
-    // eslint-disable-next-line no-console
-    console.warn('[stock] Missing cost data for item', {
-      site: item.site,
-      id: item.id,
-      url: item.url,
-      response: data,
-    })
-  }
-  return data
-}
-
-async function queueStockOrderTask(task: StockOrderTaskModel, responsetype?: string) {
-  const hasSiteId = Boolean(task.site && task.assetId)
-  const path = hasSiteId
-    ? `/stockorder/${encodeURIComponent(task.site!)}/${encodeURIComponent(task.assetId!)}`
-    : '/stockorder'
-  const queryParams: Record<string, string | number | boolean | undefined> = {
-    responsetype,
-    responseType: responsetype,
-  }
-  if (task.sourceUrl && HTTP_URL_REGEX.test(task.sourceUrl)) {
-    queryParams.url = task.sourceUrl
-  }
-  const url = buildUrl(path, queryParams)
-  const response = await fetch(url, { headers: withApiKey() })
-  const bodyText = await response.text()
-  if (!response.ok) {
-    throw new Error(bodyText || `Failed to queue stock order (status ${response.status}).`)
-  }
-
-  let parsed: Record<string, unknown>
-  try {
-    parsed = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : {}
-  } catch {
-    parsed = {}
-  }
-
-  const externalTaskId = extractTaskIdFromResponse(parsed)
-  const latestMessage = safeString(parsed.message) ?? 'Order queued.'
-  const candidateDownload =
-    safeString(parsed.downloadLink) ||
-    safeString(parsed.downloadUrl) ||
-    safeString(parsed.url)
-  let finalDownload = candidateDownload ?? task.downloadUrl ?? undefined
-  const files = Array.isArray(parsed.files) ? (parsed.files as Array<Record<string, unknown>>) : []
-  if (!finalDownload && files.length > 0) {
-    const firstFileUrl = safeString(files[0]?.url)
-    if (firstFileUrl) finalDownload = firstFileUrl
-  }
-
-  return {
-    parsed,
-    externalTaskId,
-    latestMessage,
-    downloadUrl: finalDownload,
-  }
-}
-
-async function respondByContentType(r: FetchResponse, res: express.Response) {
-  const contentType = r.headers?.get('content-type') || ''
-  if (contentType.includes('application/json')) {
-    try {
-      const data = await r.json()
-      return res.status(r.ok ? 200 : r.status).json(data)
-    } catch {
-      const text = await r.text()
-      res.setHeader('content-type', 'text/plain; charset=utf-8')
-      return res.status(r.status).send(text)
-    }
-  }
-  const arrayBuf = await r.arrayBuffer()
-  const buf = Buffer.from(arrayBuf)
-  if (contentType) res.setHeader('content-type', contentType)
-  return res.status(r.status).send(buf)
-}
-
-// ===== Schemas =====
 const ResponseTypeEnum = z.enum(['any', 'gdrive', 'asia', 'mydrivelink']).optional()
 
 const InfoQuerySchema = z
@@ -329,25 +49,32 @@ const InfoQuerySchema = z
     site: z.string().min(1).optional(),
     id: z.string().min(1).optional(),
     url: z.string().url().optional(),
+    responsetype: ResponseTypeEnum,
   })
   .refine(
-    (d) => (d.url && !d.site && !d.id) || (!!d.site && !!d.id && !d.url) || (!!d.url && !!d.site && !!d.id),
-    { message: 'Provide either url, or site+id, or all three; but not a single site/id without the other.' }
+    (data) =>
+      (data.url && !data.site && !data.id) ||
+      (!!data.site && !!data.id && !data.url) ||
+      (!!data.url && !!data.site && !!data.id),
+    { message: 'Provide either url, site+id, or all three together.' }
   )
 
 const OrderBodySchema = z
   .object({
+    userId: z.string().min(1).optional(),
     site: z.string().min(1).optional(),
     id: z.string().min(1).optional(),
     url: z.string().url().optional(),
     responsetype: ResponseTypeEnum,
     notificationChannel: z.string().optional(),
   })
-  .refine((d) => (!!d.url && !d.site && !d.id) || (!!d.site && !!d.id), {
+  .refine((data) => Boolean(data.url) || (Boolean(data.site) && Boolean(data.id)), {
     message: 'Provide url OR both site and id.',
   })
 
 const StatusQuerySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
+
+const ConfirmBodySchema = z.object({ responsetype: ResponseTypeEnum }).strict()
 
 const DownloadQuerySchema = z
   .object({
@@ -357,11 +84,18 @@ const DownloadQuerySchema = z
   })
   .strict()
 
-const ConfirmBodySchema = z
+const DownloadHistoryQuerySchema = z
+  .object({
+    userId: z.string().min(1),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    status: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .strict()
+
+const RedownloadQuerySchema = z
   .object({
     responsetype: ResponseTypeEnum,
   })
-  .partial()
   .strict()
 
 const MultiLinkItemSchema = z
@@ -377,7 +111,7 @@ const MultiLinkItemSchema = z
 const PreviewRequestSchema = z
   .object({
     userId: z.string().min(1),
-    responsetype: ResponseTypeEnum.optional(),
+    responsetype: ResponseTypeEnum,
     items: z.array(MultiLinkItemSchema).min(1).max(MAX_BULK_ITEMS),
   })
   .strict()
@@ -385,7 +119,7 @@ const PreviewRequestSchema = z
 const OrderCommitSchema = z
   .object({
     userId: z.string().min(1),
-    responsetype: ResponseTypeEnum.optional(),
+    responsetype: ResponseTypeEnum,
     taskIds: z.array(z.string().min(1)).min(1),
   })
   .strict()
@@ -403,19 +137,130 @@ const TaskListQuerySchema = z
   })
   .strict()
 
-type MultiLinkItem = z.infer<typeof MultiLinkItemSchema>
+type StockOrderTaskModel = Awaited<ReturnType<typeof prisma.stockOrderTask.findMany>>[number]
+
+type BalancePayload = {
+  userId: string
+  points: number
+}
 
 function badRequest(res: express.Response, issues: z.ZodIssue[]) {
   return res.status(400).json({ error: 'ValidationError', issues })
 }
 
-router.get('/balance/:userId', async (req, res, next) => {
+function ensureAuthorizedUser(req: AuthenticatedRequest, userId: string) {
+  if (!req.user || req.user.id !== userId) {
+    const error = new Error('Cannot act on behalf of another user.')
+    ;(error as { status: number }).status = 403
+    throw error
+  }
+}
+
+function formatTaskResponse(task: StockOrderTaskModel) {
+  return {
+    taskId: task.id,
+    externalTaskId: task.externalTaskId ?? undefined,
+    status: task.status,
+    title: task.title ?? undefined,
+    previewUrl: task.previewUrl ?? undefined,
+    thumbnailUrl: task.thumbnailUrl ?? undefined,
+    costPoints: task.costPoints ?? undefined,
+    costAmount: task.costAmount ?? undefined,
+    costCurrency: task.costCurrency ?? undefined,
+    latestMessage: task.latestMessage ?? undefined,
+    downloadUrl: task.downloadUrl ?? undefined,
+    site: task.site ?? undefined,
+    assetId: task.assetId ?? undefined,
+    responsetype: task.responsetype ?? undefined,
+    batchId: task.batchId ?? undefined,
+    sourceUrl: task.sourceUrl,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  }
+}
+
+function calculateTaskCost(task: StockOrderTaskModel): number {
+  return Math.max(task.costPoints ?? 0, 0)
+}
+
+function buildCreateOrderPayload(task: StockOrderTaskModel, overrideResponsetype?: string) {
+  const isHttpSource = /^https?:\/\//i.test(task.sourceUrl)
+  return {
+    site: task.site ?? undefined,
+    id: task.assetId ?? undefined,
+    url: isHttpSource ? task.sourceUrl : undefined,
+    responsetype: overrideResponsetype ?? task.responsetype ?? undefined,
+    notification_channel: DEFAULT_NOTIFICATION_CHANNEL,
+  }
+}
+
+async function streamDownload(downloadUrl: string, fileName: string | undefined, res: express.Response) {
+  const response = await fetch(downloadUrl)
+  const contentType = response.headers?.get('content-type') || ''
+  const contentLength = response.headers?.get('content-length') || ''
+
+  if (fileName) {
+    res.setHeader('content-disposition', `attachment; filename="${fileName}"`)
+  }
+  if (contentType) res.setHeader('content-type', contentType)
+  if (contentLength) res.setHeader('content-length', contentLength)
+
+  const body = response.body as unknown as NodeReadableStream | null
+  const fromWeb = typeof Readable.fromWeb === 'function' ? Readable.fromWeb : null
+  if (body && fromWeb) {
+    res.status(response.status)
+    return fromWeb(body).pipe(res)
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+  res.status(response.status)
+  res.send(buffer)
+  return undefined
+}
+
+async function formatBalanceResponse(userId: string): Promise<BalancePayload> {
+  const balance = await getOrCreateBalance(userId)
+  return {
+    userId,
+    points: balance.points,
+  }
+}
+
+router.get('/sites', async (_req, res, next) => {
+  try {
+    const sites = await nehtwClient.getSites()
+    return res.json({ sites })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/info', async (req, res, next) => {
+  try {
+    const parsed = InfoQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+    const info = await nehtwClient.getStockInfo(parsed.data)
+    return res.json({ info })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/balance/:userId', requireUser, async (req, res, next) => {
   try {
     const { userId } = req.params
-    if (!userId) return badRequest(res, [{ message: 'Missing userId', path: ['userId'], code: 'custom' } as z.ZodIssue])
-    const balance = await getOrCreateUserBalance(userId)
-    return res.json({ userId, points: balance.points, updatedAt: balance.updatedAt.toISOString() })
+    const authReq = req as AuthenticatedRequest
+    ensureAuthorizedUser(authReq, userId)
+    const balance = await getOrCreateBalance(userId)
+    return res.json({
+      userId,
+      points: balance.points,
+      updatedAt: balance.updatedAt.toISOString(),
+    })
   } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
     next(err)
   }
 })
@@ -423,68 +268,190 @@ router.get('/balance/:userId', async (req, res, next) => {
 router.post('/balance/:userId/adjust', async (req, res, next) => {
   try {
     const { userId } = req.params
-    if (!userId) return badRequest(res, [{ message: 'Missing userId', path: ['userId'], code: 'custom' } as z.ZodIssue])
+    if (!userId) {
+      return badRequest(res, [{ message: 'Missing userId', path: ['userId'], code: 'custom' } as z.ZodIssue])
+    }
+
     const parsed = BalanceAdjustSchema.safeParse(req.body)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const balance = await getOrCreateUserBalance(userId)
-    const nextPoints = Math.max(balance.points + parsed.data.deltaPoints, 0)
-    const updated = await prisma.userBalance.update({ where: { userId }, data: { points: nextPoints } })
-    return res.json({ userId, points: updated.points, updatedAt: updated.updatedAt.toISOString() })
+
+    const authReq = req as AuthenticatedRequest
+    if (authReq.user && authReq.user.id !== userId) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Cannot modify another user balance.' })
+    }
+
+    const { deltaPoints } = parsed.data
+    try {
+      const updated =
+        deltaPoints >= 0
+          ? await creditBalance(userId, deltaPoints)
+          : await debitBalance(userId, Math.abs(deltaPoints))
+      return res.json({
+        userId,
+        points: updated.points,
+        updatedAt: updated.updatedAt.toISOString(),
+      })
+    } catch (error) {
+      if (error instanceof InsufficientBalanceError) {
+        return res.status(400).json({
+          error: 'InsufficientBalance',
+          availablePoints: error.availablePoints,
+          requiredPoints: error.requiredPoints,
+        })
+      }
+      throw error
+    }
   } catch (err) {
     next(err)
   }
 })
 
-router.get('/tasks', async (req, res, next) => {
+router.get('/tasks', requireUser, async (req, res, next) => {
   try {
     const parsed = TaskListQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
     const { userId, limit = 25 } = parsed.data
+
+    const authReq = req as AuthenticatedRequest
+    ensureAuthorizedUser(authReq, userId)
+
     const tasks = await prisma.stockOrderTask.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
     })
+
     return res.json({ tasks: tasks.map(formatTaskResponse) })
   } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
     next(err)
   }
 })
 
-router.post('/order/preview', async (req, res, next) => {
+router.get('/downloads/history', requireUser, async (req, res, next) => {
+  try {
+    const parsed = DownloadHistoryQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+
+    const { userId, limit = 50, status } = parsed.data
+    const authReq = req as AuthenticatedRequest
+    ensureAuthorizedUser(authReq, userId)
+
+    const statusList = Array.isArray(status)
+      ? status
+      : typeof status === 'string' && status.length > 0
+        ? status.split(',')
+        : undefined
+
+    const tasks = await prisma.stockOrderTask.findMany({
+      where: {
+        userId,
+        ...(statusList && statusList.length > 0
+          ? { status: { in: statusList } }
+          : { status: { in: ['completed', 'ready', 'queued'] } }),
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+    })
+
+    return res.json({ downloads: tasks.map(formatTaskResponse) })
+  } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
+    next(err)
+  }
+})
+
+router.get('/downloads/:taskId', requireUser, async (req, res, next) => {
+  try {
+    const parsed = RedownloadQuerySchema.safeParse(req.query)
+    if (!parsed.success) return badRequest(res, parsed.error.issues)
+
+    const authReq = req as AuthenticatedRequest
+    const { taskId } = req.params
+    const task = await prisma.stockOrderTask.findUnique({ where: { id: taskId } })
+
+    if (!task) {
+      return res.status(404).json({ error: 'NotFound', message: 'Task not found.' })
+    }
+
+    ensureAuthorizedUser(authReq, task.userId)
+
+    const responsetype = parsed.data.responsetype
+    let downloadUrl = task.downloadUrl ?? undefined
+    let fileName: string | undefined
+
+    if (!downloadUrl) {
+      const upstream = await nehtwClient.downloadOrder(task.externalTaskId ?? taskId, responsetype)
+      downloadUrl = upstream.downloadUrl ?? undefined
+      fileName = upstream.fileName ?? undefined
+
+      if (downloadUrl) {
+        await prisma.stockOrderTask.update({
+          where: { id: task.id },
+          data: {
+            downloadUrl,
+          },
+        })
+      }
+    }
+
+    if (!downloadUrl) {
+      return res.status(404).json({ error: 'DownloadUnavailable', message: 'No download link available yet.' })
+    }
+
+    return res.json({
+      download: {
+        taskId: task.id,
+        downloadUrl,
+        fileName,
+      },
+    })
+  } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
+    next(err)
+  }
+})
+
+router.post('/order/preview', requireUser, async (req, res, next) => {
   try {
     const parsed = PreviewRequestSchema.safeParse(req.body)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { userId, items, responsetype } = parsed.data
 
-    const balance = await getOrCreateUserBalance(userId)
+    const authReq = req as AuthenticatedRequest
+    ensureAuthorizedUser(authReq, parsed.data.userId)
+
+    const { userId, items, responsetype } = parsed.data
+    const balance = await getOrCreateBalance(userId)
     const previewResults: Array<{ task?: ReturnType<typeof formatTaskResponse>; error?: string }> = []
 
     for (const item of items) {
       try {
-        const info = await fetchInfoForItem(item, responsetype)
-        const costPoints = determineCostPoints(info)
-        const costAmount = determineCostAmount(info)
-        const costCurrency = determineCurrency(info)
-        const title = pickTitle(info)
-        const previewUrl = pickPreviewUrl(info)
-        const thumbnailUrl = pickThumbnail(info)
-        const assetId = pickAssetId(info)
-        const site = resolveSite(item, info)
-        const sourceUrl = computeSourceUrl(item, info)
+        const info = await nehtwClient.getStockInfo({
+          site: item.site,
+          id: item.id,
+          url: item.url,
+          responsetype,
+        })
 
+        const sourceUrl = info.sourceUrl ?? item.url ?? (item.site && item.id ? `${item.site}:${item.id}` : '')
         const created = await prisma.stockOrderTask.create({
           data: {
             userId,
             sourceUrl,
-            site,
-            assetId,
-            title,
-            previewUrl,
-            thumbnailUrl,
-            costPoints: costPoints ?? undefined,
-            costAmount: costAmount ?? undefined,
-            costCurrency: costCurrency ?? undefined,
+            site: info.site ?? item.site ?? undefined,
+            assetId: info.assetId ?? item.id ?? undefined,
+            title: info.title ?? undefined,
+            previewUrl: info.previewUrl ?? undefined,
+            thumbnailUrl: info.thumbnailUrl ?? undefined,
+            costPoints: info.costPoints ?? undefined,
+            costAmount: info.costAmount ?? undefined,
+            costCurrency: info.costCurrency ?? undefined,
             status: 'preview',
             latestMessage: 'Ready to order.',
             responsetype,
@@ -499,15 +466,21 @@ router.post('/order/preview', async (req, res, next) => {
 
     return res.json({ balance: { userId, points: balance.points }, results: previewResults })
   } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
     next(err)
   }
 })
 
-router.post('/order/commit', async (req, res, next) => {
+router.post('/order/commit', requireUser, async (req, res, next) => {
   try {
     const parsed = OrderCommitSchema.safeParse(req.body)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
+
     const { userId, taskIds, responsetype } = parsed.data
+    const authReq = req as AuthenticatedRequest
+    ensureAuthorizedUser(authReq, userId)
 
     const tasks = await prisma.stockOrderTask.findMany({
       where: {
@@ -520,42 +493,57 @@ router.post('/order/commit', async (req, res, next) => {
       return res.status(404).json({ error: 'NotFound', message: 'No tasks found for provided identifiers.' })
     }
 
-    const costByTask = new Map<string, number>()
+    const costMap = new Map<string, number>()
     let totalRequestedPoints = 0
     for (const task of tasks) {
-      const cost = task.costPoints ?? 0
-      costByTask.set(task.id, cost)
+      const cost = calculateTaskCost(task)
+      costMap.set(task.id, cost)
       totalRequestedPoints += cost
     }
 
-    const balance = await getOrCreateUserBalance(userId)
-    if (balance.points < totalRequestedPoints) {
-      return res.status(400).json({
-        error: 'InsufficientBalance',
-        availablePoints: balance.points,
-        requiredPoints: totalRequestedPoints,
-      })
+    if (totalRequestedPoints > 0) {
+      try {
+        await debitBalance(userId, totalRequestedPoints)
+      } catch (error) {
+        if (error instanceof InsufficientBalanceError) {
+          return res.status(400).json({
+            error: 'InsufficientBalance',
+            availablePoints: error.availablePoints,
+            requiredPoints: error.requiredPoints,
+          })
+        }
+        throw error
+      }
     }
 
-    const successes: Array<ReturnType<typeof formatTaskResponse>> = []
+    const updatedTasks: StockOrderTaskModel[] = []
     const failures: Array<{ taskId: string; error: string }> = []
-    let pointsToDeduct = 0
+    let refundPoints = 0
 
     for (const task of tasks) {
       try {
-        const queueResult = await queueStockOrderTask(task, responsetype ?? task.responsetype ?? undefined)
+        const upstream = await nehtwClient.createOrder({
+          ...buildCreateOrderPayload(task, responsetype ?? task.responsetype ?? undefined),
+        })
+
+        const success = upstream.success !== false
+        const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
         const updated = await prisma.stockOrderTask.update({
           where: { id: task.id },
           data: {
-            status: 'queued',
-            externalTaskId: queueResult.externalTaskId ?? task.externalTaskId,
-            latestMessage: queueResult.latestMessage,
-            downloadUrl: queueResult.downloadUrl ?? task.downloadUrl,
+            status: success ? 'queued' : 'error',
+            externalTaskId: upstream.taskId ?? task.externalTaskId ?? undefined,
+            latestMessage,
+            downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
             responsetype: responsetype ?? task.responsetype ?? undefined,
           },
         })
-        successes.push(formatTaskResponse(updated))
-        pointsToDeduct += costByTask.get(task.id) ?? 0
+
+        if (!success) {
+          failures.push({ taskId: task.id, error: latestMessage })
+          refundPoints += costMap.get(task.id) ?? 0
+        }
+        updatedTasks.push(updated)
       } catch (error) {
         const message = formatError(error)
         const updated = await prisma.stockOrderTask.update({
@@ -566,232 +554,188 @@ router.post('/order/commit', async (req, res, next) => {
           },
         })
         failures.push({ taskId: task.id, error: message })
-        successes.push(formatTaskResponse(updated))
+        refundPoints += costMap.get(task.id) ?? 0
+        updatedTasks.push(updated)
       }
     }
 
-    if (pointsToDeduct > 0) {
-      await prisma.userBalance.update({
-        where: { userId },
-        data: { points: Math.max(balance.points - pointsToDeduct, 0) },
-      })
+    if (refundPoints > 0) {
+      await creditBalance(userId, refundPoints)
     }
 
-    const updatedBalance = await prisma.userBalance.findUnique({ where: { userId } })
+    const balancePayload = await formatBalanceResponse(userId)
 
     return res.json({
-      balance: { userId, points: updatedBalance?.points ?? 0 },
-      tasks: successes,
+      balance: balancePayload,
+      tasks: updatedTasks.map(formatTaskResponse),
       failures,
-      pointsDeducted: pointsToDeduct,
+      pointsDebited: totalRequestedPoints,
+      pointsRefunded: refundPoints,
     })
   } catch (err) {
-    next(err)
-  }
-})
-// GET /stock/sites -> list supported sites/pricing
-router.get('/sites', async (_req, res, next) => {
-  try {
-    const url = buildUrl('/stocksites')
-    const r = await fetch(url, { headers: withApiKey() })
-    if (!r.ok) {
-      const text = await r.text()
-      throw new Error(text || `Failed to load stock sites (status ${r.status}).`)
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
     }
-    const raw = (await r.json()) as Record<string, unknown>
-    const sites = Object.entries(raw)
-      .filter(([key]) => key !== 'notificationChannel')
-      .map(([site, value]) => {
-        const entry = (typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {})
-        const price = typeof entry.price === 'number' ? entry.price : Number(entry.price)
-        const minPrice =
-          typeof entry.minPrice === 'number' ? entry.minPrice : entry.minPrice != null ? Number(entry.minPrice) : undefined
-        return {
-          site,
-          displayName: typeof entry.displayName === 'string' ? entry.displayName : undefined,
-          price: Number.isFinite(price) ? price : undefined,
-          minPrice: Number.isFinite(minPrice ?? NaN) ? minPrice : undefined,
-          currency: typeof entry.currency === 'string' ? entry.currency : undefined,
-          active: typeof entry.active === 'boolean' ? entry.active : undefined,
-        }
-      })
-      .sort((a, b) => a.site.localeCompare(b.site))
-
-    return res.json({ sites })
-  } catch (err) {
     next(err)
   }
 })
 
-// GET /stock/info?site=...&id=...&url=...
-router.get('/info', async (req, res, next) => {
-  try {
-    const parsed = InfoQuerySchema.safeParse(req.query)
-    if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { site, id, url } = parsed.data
-    const path = site && id ? `/stockinfo/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockinfo'
-    const fullUrl = buildUrl(path, { url })
-    const r = await fetch(fullUrl, { headers: withApiKey() })
-    return respondByContentType(r, res)
-  } catch (err) {
-    next(err)
-  }
-})
-
-// POST /stock/order { site, id, url, responsetype, notificationChannel? }
-router.post('/order', async (req, res, next) => {
+router.post('/order', requireUser, async (req, res, next) => {
   try {
     const parsed = OrderBodySchema.safeParse(req.body)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
+
+    const authReq = req as AuthenticatedRequest
+    const userId = parsed.data.userId ?? authReq.user!.id
+    ensureAuthorizedUser(authReq, userId)
+
     const { site, id, url, responsetype, notificationChannel } = parsed.data
-    const notify = notificationChannel || process.env.NEHTW_NOTIFY
+    const info = await nehtwClient.getStockInfo({ site, id, url, responsetype })
 
-    const path = site && id ? `/stockorder/${encodeURIComponent(site)}/${encodeURIComponent(id)}` : '/stockorder'
-    const fullUrl = buildUrl(path, {
-      url,
-      responsetype,
-      responseType: responsetype,
-      notificationChannel: notify,
-    })
-
-    // Upstream only supports GET; send as query params
-    const r = await fetch(fullUrl, { headers: withApiKey() })
-    if (!r.ok) {
-      const text = await r.text()
-      throw new Error(text || `Failed to queue stock order (status ${r.status}).`)
+    const sourceUrl = info.sourceUrl ?? url ?? (site && id ? `${site}:${id}` : '')
+    const costPoints = Math.max(info.costPoints ?? 0, 0)
+    let pointsReserved = 0
+    if (costPoints > 0) {
+      try {
+        await debitBalance(userId, costPoints)
+        pointsReserved = costPoints
+      } catch (error) {
+        if (error instanceof InsufficientBalanceError) {
+          return res.status(400).json({
+            error: 'InsufficientBalance',
+            availablePoints: error.availablePoints,
+            requiredPoints: error.requiredPoints,
+          })
+        }
+        throw error
+      }
     }
-    const data = (await r.json()) as Record<string, unknown>
-    const taskId = typeof data.task_id === 'string' ? data.task_id : undefined
-    const status = typeof data.status === 'string' ? data.status : undefined
-    const message = typeof data.message === 'string' ? data.message : undefined
-    const queuedAt = typeof data.queued_at === 'string' ? data.queued_at : undefined
-    const success = typeof data.success === 'boolean' ? data.success : undefined
-    const actions = data.actions
 
-    return res.json({
-      success: success ?? true,
-      taskId,
-      status,
-      message,
-      queuedAt,
-      actions,
+    let task = await prisma.stockOrderTask.create({
+      data: {
+        userId,
+        sourceUrl,
+        site: info.site ?? site ?? undefined,
+        assetId: info.assetId ?? id ?? undefined,
+        title: info.title ?? undefined,
+        previewUrl: info.previewUrl ?? undefined,
+        thumbnailUrl: info.thumbnailUrl ?? undefined,
+        costPoints: info.costPoints ?? undefined,
+        costAmount: info.costAmount ?? undefined,
+        costCurrency: info.costCurrency ?? undefined,
+        status: 'pending',
+        latestMessage: 'Submitting upstream order.',
+        responsetype,
+      },
     })
+
+    try {
+      const upstream = await nehtwClient.createOrder({
+        site: info.site ?? site,
+        id: info.assetId ?? id,
+        url: sourceUrl,
+        responsetype,
+        notification_channel: notificationChannel ?? DEFAULT_NOTIFICATION_CHANNEL,
+      })
+
+      const success = upstream.success !== false
+      const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
+      task = await prisma.stockOrderTask.update({
+        where: { id: task.id },
+        data: {
+          status: success ? 'queued' : 'error',
+          externalTaskId: upstream.taskId ?? task.externalTaskId ?? undefined,
+          latestMessage,
+          downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
+        },
+      })
+
+      if (!success && pointsReserved > 0) {
+        await creditBalance(userId, pointsReserved)
+        pointsReserved = 0
+      }
+
+      const balancePayload = await formatBalanceResponse(userId)
+      return res.json({
+        task: formatTaskResponse(task),
+        balance: balancePayload,
+        upstream,
+      })
+    } catch (error) {
+      const message = formatError(error)
+      task = await prisma.stockOrderTask.update({
+        where: { id: task.id },
+        data: {
+          status: 'error',
+          latestMessage: message,
+        },
+      })
+
+      if (pointsReserved > 0) {
+        await creditBalance(userId, pointsReserved)
+      }
+
+      const balancePayload = await formatBalanceResponse(userId)
+      return res.status(502).json({
+        error: 'UpstreamFailure',
+        message,
+        task: formatTaskResponse(task),
+        balance: balancePayload,
+      })
+    }
   } catch (err) {
+    if ((err as { status?: number }).status === 403) {
+      return res.status(403).json({ error: 'Forbidden', message: (err as Error).message })
+    }
     next(err)
   }
 })
 
-// GET /stock/order/:taskId/status?responsetype=...
 router.get('/order/:taskId/status', async (req, res, next) => {
   try {
     const { taskId } = req.params
     const parsed = StatusQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { responsetype } = parsed.data
-    const url = buildUrl(`/order/${encodeURIComponent(taskId)}/status`, {
-      responsetype,
-      responseType: responsetype,
-    })
-    const r = await fetch(url, { headers: withApiKey() })
-    return respondByContentType(r, res)
+    const status = await nehtwClient.getOrderStatus(taskId, parsed.data.responsetype)
+    return res.json({ status })
   } catch (err) {
     next(err)
   }
 })
 
-// POST /stock/order/:taskId/confirm { responsetype? }
 router.post('/order/:taskId/confirm', async (req, res, next) => {
   try {
     const { taskId } = req.params
     const parsed = ConfirmBodySchema.safeParse(req.body ?? {})
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { responsetype } = parsed.data
-    const url = buildUrl(`/order/${encodeURIComponent(taskId)}/confirm`, {
-      responsetype,
-      responseType: responsetype,
-    })
-    const r = await fetch(url, { headers: withApiKey() })
-    return respondByContentType(r, res)
+    const confirmation = await nehtwClient.confirmOrder(taskId, parsed.data.responsetype)
+    return res.json({ confirmation })
   } catch (err) {
     next(err)
   }
 })
 
-// GET /stock/order/:taskId/download?responsetype=any|gdrive|asia|mydrivelink&redirect=true&follow=true
 router.get('/order/:taskId/download', async (req, res, next) => {
   try {
     const { taskId } = req.params
     const parsed = DownloadQuerySchema.safeParse(req.query)
     if (!parsed.success) return badRequest(res, parsed.error.issues)
-    const { responsetype, redirect, follow } = parsed.data
-    const url = buildUrl(`/v2/order/${encodeURIComponent(taskId)}/download`, {
-      responsetype,
-      responseType: responsetype,
-    })
-    const r = await fetch(url, { headers: withApiKey() })
 
-    // If follow=true, extract link and stream file back via this server (with headers)
-    if (follow) {
-      try {
-        const ct = r.headers?.get('content-type') || ''
-        if (ct.includes('application/json')) {
-          const clone = r.clone()
-          const data = (await clone.json()) as DownloadResponse
-          const link: string | undefined =
-            data?.downloadLink || data?.link || data?.url || data?.downloadUrl
-          if (link) {
-            const fileResp = await fetch(link)
-
-            // Mirror CDN headers
-            const fileCT = fileResp.headers?.get('content-type') || ''
-            const fileCL = fileResp.headers?.get('content-length') || ''
-
-            // Set content-disposition when we know the file name
-            const fname = data?.fileName
-            if (fname) {
-              res.setHeader('content-disposition', `attachment; filename="${fname}"`)
-            }
-            if (fileCT) res.setHeader('content-type', fileCT)
-            if (fileCL) res.setHeader('content-length', fileCL)
-
-            // Stream the response if supported
-            const body = fileResp.body as unknown as NodeReadableStream | null
-            try {
-              const fromWeb = typeof Readable.fromWeb === 'function' ? Readable.fromWeb : null
-              if (body && fromWeb) {
-                const nodeStream = fromWeb(body)
-                res.status(fileResp.status)
-                return nodeStream.pipe(res)
-              }
-            } catch {
-              // fall through to buffered responder
-            }
-
-            // Fallback: buffer then respond
-            return respondByContentType(fileResp, res)
-          }
-        }
-      } catch {
-        // fall through to default responder
-      }
+    const download = await nehtwClient.downloadOrder(taskId, parsed.data.responsetype)
+    if (!download.downloadUrl) {
+      return res.status(404).json({ error: 'DownloadUnavailable', message: 'No download link available yet.' })
     }
 
-    // If redirect=true, 302 to the direct link
-    if (redirect) {
-      try {
-        const ct = r.headers?.get('content-type') || ''
-        if (ct.includes('application/json')) {
-          const data = (await r.json()) as DownloadResponse
-          const link: string | undefined =
-            data?.downloadLink || data?.link || data?.url || data?.downloadUrl
-          if (link) return res.redirect(302, link)
-        }
-      } catch {
-        // fall through to default responder
-      }
+    if (parsed.data.redirect) {
+      return res.redirect(download.downloadUrl)
     }
 
-    return respondByContentType(r, res)
+    if (parsed.data.follow) {
+      await streamDownload(download.downloadUrl, download.fileName, res)
+      return
+    }
+
+    return res.json({ download })
   } catch (err) {
     next(err)
   }
