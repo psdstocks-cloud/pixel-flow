@@ -1,4 +1,4 @@
-import NextAuth from 'next-auth'
+import NextAuth, { type NextAuthOptions, type DefaultSession } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { z } from 'zod'
 import { findUserByEmail, verifyPassword } from '../../../../lib/auth'
@@ -8,7 +8,7 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 })
 
-export const authOptions = {
+export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt' as const,
     maxAge: 60 * 60 * 24 * 30,
@@ -52,7 +52,7 @@ export const authOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }: { token: any; user: any }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id
         token.email = user.email
@@ -61,7 +61,7 @@ export const authOptions = {
       }
       return token
     },
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }) {
       if (session.user) {
         session.user.id = typeof token.id === 'string' ? token.id : ''
         session.user.email = token.email as string | undefined
