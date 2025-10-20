@@ -86,7 +86,12 @@ export default function BillingPage() {
         body: JSON.stringify({ packageId }),
       })
       if (!response.ok) throw new Error('Failed to subscribe')
-      return response.json()
+      return response.json() as Promise<{
+        success: boolean
+        message: string
+        pointsAwarded: number
+        redirectUrl: string
+      }>
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queries.packages })
@@ -119,6 +124,7 @@ export default function BillingPage() {
       <section className="billing-hero">
         <h1>Choose Your Plan</h1>
         <p>Select a package that fits your stock download needs. Points are credited monthly.</p>
+        <p className="note">Payment processing is currently handled manually while we finalize our Stripe integration.</p>
       </section>
 
       {subscribeMutation.isError && (
@@ -131,8 +137,11 @@ export default function BillingPage() {
 
       {subscribeMutation.isSuccess && (
         <Toast
-          title="Subscription successful"
-          message="Your subscription has been activated and points have been added to your account."
+          title="Subscription request received"
+          message={
+            subscribeMutation.data?.message ??
+            'We have recorded your request and will be in touch to complete payment.'
+          }
           variant="success"
         />
       )}

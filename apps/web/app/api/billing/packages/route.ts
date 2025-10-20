@@ -1,5 +1,5 @@
 import { authOptions } from "../../../../lib/auth-options";
-import { stripe } from "../../../../lib/billing";
+import { listMockPackages } from "../../../../lib/billing";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -13,12 +13,8 @@ export async function GET() {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const prices = await stripe.prices.list({
-      lookup_keys: ["premium_monthly", "premium_yearly"],
-      expand: ["data.product"],
-    });
-
-    return NextResponse.json(prices.data);
+    const packages = listMockPackages();
+    return NextResponse.json(packages);
   } catch (error) {
     console.error("[BILLING_PACKAGES_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });

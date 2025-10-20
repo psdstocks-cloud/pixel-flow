@@ -1,5 +1,5 @@
 import { authOptions } from "../../../../lib/auth-options";
-import { stripe } from "../../../../lib/billing";
+import { simulateSubscription } from "../../../../lib/billing";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -13,11 +13,11 @@ function absoluteUrl(path: string) {
 
 const returnUrl = absoluteUrl("/downloads");
 
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const { searchParams } = new URL(req.url);
-    const priceId = searchParams.get("priceId");
+    const body = await req.json();
+    const priceId = typeof body?.priceId === 'string' ? body.priceId : null;
 
     if (!session?.user) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -27,27 +27,17 @@ export async function GET(req: Request) {
       return new NextResponse("Price ID is required", { status: 400 });
     }
 
-    const stripeSession = await stripe.checkout.sessions.create({
-      success_url: returnUrl,
-      cancel_url: returnUrl,
-      payment_method_types: ["card"],
-      mode: "subscription",
-      billing_address_collection: "auto",
-      customer_email: session.user.email!,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      metadata: {
-        userId: session.user.id,
-      },
-    });
+    const result = simulateSubscription(priceId);
 
-    return new NextResponse(JSON.stringify({ url: stripeSession.url }));
+    return NextResponse.json({
+      success: result.success,
+      message: result.message,
+      pointsAwarded: result.pointsAwarded,
+      packageId: result.packageId,
+      redirectUrl: returnUrl,
+    });
   } catch (error) {
-    console.log("[STRIPE_SUBSCRIBE_GET]", error);
+    console.log("[MOCK_SUBSCRIBE_POST]", error);
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
