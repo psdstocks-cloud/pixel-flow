@@ -1,9 +1,14 @@
+import '../globals.css'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '../../lib/auth-options'
+import { AppProviders } from '../providers'
+import { Sidebar } from './Sidebar'
 import DashboardNav, { type DashboardNavLink } from './nav-links'
+import { getLocaleDirection, getRequestLocale } from '../../lib/i18n/request'
+import { loadShellMessages } from '../../lib/i18n/shell'
+import { LanguageSwitcher } from '../../components/LanguageSwitcher'
 
 const NAV_LINKS: DashboardNavLink[] = [
   { href: '/stock/order', label: 'Stock order' },
@@ -19,15 +24,25 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect('/login')
   }
 
+  const locale = getRequestLocale()
+  const dir = getLocaleDirection(locale)
+  const shellMessages = await loadShellMessages(locale)
+
   return (
-    <div className="dashboard-shell">
-      <aside className="dashboard-sidebar">
-        <Link href="/" className="brand">
-          Pixel Flow
-        </Link>
-        <DashboardNav links={NAV_LINKS} />
-      </aside>
-      <div className="dashboard-main">{children}</div>
-    </div>
+    <AppProviders locale={locale}>
+      <div className="dashboard-layout" dir={dir}>
+        <Sidebar />
+        <div className="dashboard-main">
+          <header className="app-header">
+            <Link href="/" className="brand">
+              Pixel Flow
+            </Link>
+            <LanguageSwitcher currentLocale={locale} labels={shellMessages.languageSwitcher} />
+          </header>
+          <DashboardNav links={NAV_LINKS} />
+          <main>{children}</main>
+        </div>
+      </div>
+    </AppProviders>
   )
 }
