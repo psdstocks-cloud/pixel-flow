@@ -175,7 +175,7 @@ function jsonHeaders(userId?: string) {
 }
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE}/api${endpoint}`;
+  const url = `${API_BASE}${endpoint}`;
   const headers = new Headers(options.headers || {});
 
   if (API_KEY) {
