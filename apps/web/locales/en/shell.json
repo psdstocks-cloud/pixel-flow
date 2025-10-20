@@ -1,0 +1,10 @@
+{
+  "languageSwitcher": {
+    "label": "Language",
+    "options": {
+      "en": "English",
+      "ar": "Arabic"
+    },
+    "loading": "Updating language…"
+  }
+}

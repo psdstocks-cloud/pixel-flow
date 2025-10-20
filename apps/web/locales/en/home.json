@@ -1,0 +1,219 @@
+{
+  "hero": {
+    "badge": "Pixel Flow Platform",
+    "headline": "All your creative workflows in one place.",
+    "subheadline": "Manage your stock downloads today while we prepare AI image generation and account insights for their upcoming release.",
+    "primaryCta": {
+      "label": "Get started",
+      "note": "Create your account"
+    },
+    "secondaryCta": {
+      "label": "Sign in",
+      "note": "Access your dashboard"
+    },
+    "trustIndicators": [
+      "10,000+ images downloaded",
+      "5,000+ AI images generated",
+      "No subscription required",
+      "Instant downloads"
+    ]
+  },
+  "heroGrid": {
+    "items": [
+      {
+        "title": "Stock Order Workflow",
+        "description": "Preview costs, queue up to five links at once, and access completed downloads from one dashboard."
+      },
+      {
+        "title": "AI Generation (private beta)",
+        "description": "Request early access to experiment with custom prompts, tailored styles, and automated background cleanup as we polish the workflow."
+      },
+      {
+        "title": "Account Insights (coming soon)",
+        "description": "Soon you’ll visualize balance usage, renewal dates, and order performance in real time to plan your production schedule with confidence."
+      }
+    ]
+  },
+  "problemSolution": {
+    "headline": "Stop Wasting Time and Money on Visual Content",
+    "items": [
+      {
+        "problem": "Stock sites charge $200+/month for subscriptions you barely use.",
+        "solution": "Pay per image with credits. Use 1 image or 100—you decide."
+      },
+      {
+        "problem": "Hiring designers costs $500+ and takes days.",
+        "solution": "Generate custom images with AI in 60 seconds. No designer needed."
+      },
+      {
+        "problem": "Background removal tools are slow and inaccurate.",
+        "solution": "Remove backgrounds in 10 seconds with AI precision."
+      }
+    ]
+  },
+  "features": {
+    "headline": "Everything You Need in One Place",
+    "items": [
+      {
+        "id": "stock",
+        "icon": "🖼",
+        "title": "Access 50M+ Premium Stock Images",
+        "description": "Search across Shuterstock, Adobe Stock, Freepik, and more. Find the perfect image from multiple sources without switching platforms.",
+        "pricing": "From 5 credits per image",
+        "cta": "Browse Images"
+      },
+      {
+        "id": "ai",
+        "icon": "✨",
+        "title": "Generate Custom Images with AI",
+        "description": "Describe what you need in plain language. Our AI creates unique, professional images in seconds. Perfect for social media, blogs, and marketing.",
+        "pricing": "From 10 credits per generation",
+        "cta": "Try AI Generator"
+      },
+      {
+        "id": "background",
+        "icon": "🎯",
+        "title": "Remove Backgrounds Instantly",
+        "description": "Upload any image and get a clean, transparent background in 10 seconds. Perfect for product photos, profile pictures, and design work.",
+        "pricing": "5 credits per image",
+        "cta": "Remove Background"
+      },
+      {
+        "id": "files",
+        "icon": "📁",
+        "title": "Never Lose Your Files Again",
+        "description": "All your downloads and generations stored securely. Re-download anytime, organize in folders, and access from any device.",
+        "pricing": "Included free",
+        "cta": "See Your Files"
+      }
+    ]
+  },
+  "howItWorks": {
+    "headline": "Get Started in 3 Simple Steps",
+    "steps": [
+      {
+        "number": "01",
+        "title": "Sign Up & Get Free Credits",
+        "description": "Create your account in 30 seconds. We'll give you 20 free credits to try all features."
+      },
+      {
+        "number": "02",
+        "title": "Choose Your Tool",
+        "description": "Search stock images, generate with AI, or remove backgrounds. All tools work the same simple way."
+      },
+      {
+        "number": "03",
+        "title": "Download & Use",
+        "description": "Get your image instantly. Use it anywhere—websites, social media, presentations, anywhere."
+      }
+    ],
+    "cta": "Start Your Free Trial"
+  },
+  "pricingPreview": {
+    "headline": "Simple, Transparent Pricing",
+    "subheadline": "No subscriptions. No hidden fees. Pay only for what you use.",
+    "packages": [
+      {
+        "name": "Starter Pack",
+        "credits": "50 credits",
+        "price": "$10",
+        "notes": [
+          "Perfect for trying out",
+          "~10 stock images",
+          "or ~5 AI generations",
+          "or ~10 background removals"
+        ],
+        "cta": "Buy Now"
+      },
+      {
+        "name": "Popular Pack",
+        "badge": "Most Popular",
+        "credits": "200 credits",
+        "price": "$35",
+        "strikePrice": "$40",
+        "savings": "Save 12%",
+        "notes": [
+          "Best for regular users",
+          "~40 stock images",
+          "or ~20 AI generations",
+          "or ~40 background removals"
+        ],
+        "cta": "Buy Now"
+      },
+      {
+        "name": "Pro Pack",
+        "credits": "500 credits",
+        "price": "$80",
+        "strikePrice": "$100",
+        "savings": "Save 20%",
+        "notes": [
+          "For power users",
+          "~100 stock images",
+          "or ~50 AI generations",
+          "or ~100 background removals"
+        ],
+        "cta": "Buy Now"
+      }
+    ],
+    "note": "Credits never expire. Use them whenever you need.",
+    "linkText": "See detailed pricing"
+  },
+  "socialProof": {
+    "headline": "Trusted by Marketers, Creators, and Businesses",
+    "testimonials": [
+      {
+        "quote": "PixelFlow saved me hours every week. I used to spend half a day searching for the right stock images. Now I find what I need in minutes.",
+        "author": "Sarah M.",
+        "role": "Digital Marketer",
+        "company": "Marketing Agency, Dubai"
+      },
+      {
+        "quote": "The AI generator is incredible. I describe what I need, and it creates exactly what I imagined. No more expensive designers for simple graphics.",
+        "author": "Ahmed K.",
+        "role": "Content Creator",
+        "company": "YouTube Channel, 50K subscribers"
+      },
+      {
+        "quote": "Background removal is so fast and accurate. I process 20-30 product photos per week. This tool pays for itself every month.",
+        "author": "Layla R.",
+        "role": "E-commerce Owner",
+        "company": "Online Store, Cairo"
+      }
+    ]
+  },
+  "faqPreview": {
+    "headline": "Quick Answers",
+    "items": [
+      {
+        "question": "Do credits expire?",
+        "answer": "No. Your credits never expire. Use them whenever you need."
+      },
+      {
+        "question": "Can I get a refund?",
+        "answer": "Yes. Unused credits can be refunded within 30 days of purchase."
+      },
+      {
+        "question": "Do I need a subscription?",
+        "answer": "No. Buy credits once, use them anytime. No monthly fees."
+      },
+      {
+        "question": "How many credits do I need?",
+        "answer": "Start with 50 credits ($10) to try everything. Most users buy 200 credits ($35) monthly."
+      }
+    ],
+    "linkText": "See all FAQs"
+  },
+  "finalCta": {
+    "headline": "Ready to Create Better Content Faster?",
+    "subheadline": "Join 5,000+ marketers, creators, and businesses using PixelFlow.",
+    "cta": {
+      "label": "Start Free Trial - Get 20 Credits"
+    },
+    "trustBadges": [
+      "Secure Payment",
+      "Instant Access",
+      "No Credit Card Required for Trial",
+      "Cancel Anytime"
+    ]
+  }
+}

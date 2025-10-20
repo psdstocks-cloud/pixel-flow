@@ -1,42 +1,34 @@
 import Link from 'next/link'
+import { getRequestLocale } from '../lib/i18n/request'
+import { loadHomeMessages } from '../lib/i18n/home'
 
-export default function HomePage() {
+export default async function HomePage() {
+  const locale = getRequestLocale()
+  const messages = await loadHomeMessages(locale)
+  const { hero, heroGrid } = messages
+
   return (
     <main className="landing">
       <section className="hero">
-        <span className="hero-badge">Pixel Flow Platform</span>
-        <h1>All your creative workflows in one place.</h1>
-        <p>
-          Manage your stock downloads today while we prepare AI image generation and account insights for their upcoming release.
-        </p>
+        {hero.badge ? <span className="hero-badge">{hero.badge}</span> : null}
+        <h1>{hero.headline}</h1>
+        <p>{hero.subheadline}</p>
         <div className="hero-actions">
           <Link href="/signup" className="primary">
-            Get started
+            {hero.primaryCta.label}
           </Link>
           <Link href="/login" className="secondary">
-            Sign in
+            {hero.secondaryCta.label}
           </Link>
         </div>
       </section>
       <section className="hero-grid">
-        <article>
-          <h2>Stock Order Workflow</h2>
-          <p>
-            Preview costs, queue up to five links at once, and access completed downloads from one dashboard.
-          </p>
-        </article>
-        <article>
-          <h2>AI Generation (private beta)</h2>
-          <p>
-            Request early access to experiment with custom prompts, tailored styles, and automated background cleanup as we polish the workflow.
-          </p>
-        </article>
-        <article>
-          <h2>Account Insights (coming soon)</h2>
-          <p>
-            Soon you’ll visualize balance usage, renewal dates, and order performance in real time to plan your production schedule with confidence.
-          </p>
-        </article>
+        {heroGrid.items.map((item) => (
+          <article key={item.title}>
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </article>
+        ))}
       </section>
     </main>
   )

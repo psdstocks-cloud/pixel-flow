@@ -47,6 +47,93 @@ main {
   gap: 56px;
 }
 
+.app-header {
+  width: min(1180px, 96vw);
+  margin: 0 auto;
+  padding: 28px 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.app-header .brand {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--pf-text);
+}
+
+.locale-switcher {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(calc(var(--pf-blur) * 0.45));
+  color: var(--pf-text-muted);
+}
+
+.locale-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.locale-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.locale-select-wrapper select {
+  min-width: 120px;
+  padding-right: 36px;
+  appearance: none;
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.locale-select-wrapper::after {
+  content: '▾';
+  position: absolute;
+  right: 12px;
+  color: var(--pf-text-subtle);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.locale-status {
+  font-size: 12px;
+  color: var(--pf-text-subtle);
+}
+
+[dir='rtl'] .app-header {
+  flex-direction: row-reverse;
+}
+
+[dir='rtl'] .locale-switcher {
+  flex-direction: row-reverse;
+}
+
+[dir='rtl'] .locale-select-wrapper::after {
+  right: auto;
+  left: 12px;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .locale-switcher {
+    justify-content: space-between;
+  }
+}
+
 h1,
 h2,
 h3 {
