@@ -78,6 +78,15 @@ export default function BillingPage() {
   const [paymentSession, setPaymentSession] = useState<MockPaymentSession | null>(null)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null)
+  const [uiState, setUiState] = useState<'choose-method' | 'confirm' | 'success' | null>(null)
+  const [pendingMethodId, setPendingMethodId] = useState<string | null>(null)
+  const [successDetails, setSuccessDetails] = useState<{
+    pointsAwarded: number
+    nextPaymentDue: string
+    packageName: string
+    price: number
+    interval: string
+  } | null>(null)
 
   const packagesQuery = useQuery({
     queryKey: queries.packages,
@@ -107,6 +116,7 @@ export default function BillingPage() {
       setPaymentSession(data.session)
       setSelectedMethod(null)
       setPaymentError(null)
+      setUiState('choose-method')
       notify({ title: 'Checkout started', message: 'Select a payment method to finish subscribing.' })
     },
     onError: (error) => {
@@ -157,6 +167,14 @@ export default function BillingPage() {
       setSelectedMethod(null)
       setPaymentError(null)
       createSessionMutation.reset()
+      setUiState('success')
+      setSuccessDetails({
+        pointsAwarded: data.pointsAwarded,
+        nextPaymentDue: data.nextPaymentDue,
+        packageName: data.package.name,
+        price: data.package.price,
+        interval: data.package.interval,
+      })
       notify({
         title: 'Payment confirmed',
         message: data.message,
@@ -176,17 +194,32 @@ export default function BillingPage() {
     return paymentSession?.paymentMethods ?? []
   }, [paymentSession])
 
-  const confirmPayment = () => {
+  const confirmSelection = () => {
     if (!paymentSession || !selectedMethod || !selectedPackage) {
       setPaymentError('Please select a payment method to continue.')
       return
     }
     setPaymentError(null)
-    finalizePaymentMutation.mutate({
-      sessionId: paymentSession.id,
-      paymentMethodId: selectedMethod,
-      packageId: selectedPackage.id,
-    })
+    setUiState('confirm')
+  }
+
+  const finalizePayment = () => {
+    if (!paymentSession || !selectedMethod || !selectedPackage) {
+      setPaymentError('Please select a payment method to continue.')
+      return
+    }
+    setPaymentError(null)
+    setPendingMethodId(selectedMethod)
+    finalizePaymentMutation.mutate(
+      {
+        sessionId: paymentSession.id,
+        paymentMethodId: selectedMethod,
+        packageId: selectedPackage.id,
+      },
+      {
+        onSettled: () => setPendingMethodId(null),
+      },
+    )
   }
 
   if (sessionStatus === 'loading') {
@@ -244,12 +277,14 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {paymentSession && selectedPackage && (
+      {(uiState === 'choose-method' || uiState === 'confirm') && paymentSession && selectedPackage && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-panel">
             <div className="modal-header">
-              <h2>Select payment method</h2>
-              <p>Complete your subscription for the <strong>{selectedPackage.name}</strong> plan.</p>
+              <h2>{uiState === 'confirm' ? 'Review and confirm' : 'Select payment method'}</h2>
+              <p>
+                Complete your subscription for the <strong>{selectedPackage.name}</strong> plan.
+              </p>
             </div>
 
             <div className="modal-summary">
@@ -266,27 +301,48 @@ export default function BillingPage() {
               </div>
             </div>
 
-            <div className="modal-section">
-              <h3>Choose a payment method</h3>
-              <div className="payment-method-grid">
-                {availableMethods.map((method) => {
-                  const active = selectedMethod === method.id
-                  return (
-                    <button
-                      key={method.id}
-                      type="button"
-                      className={`payment-method ${active ? 'active' : ''}`}
-                      onClick={() => setSelectedMethod(method.id)}
-                      disabled={finalizePaymentMutation.isPending}
-                    >
-                      <span className="payment-title">{method.label}</span>
-                      <span className="payment-description">{method.description}</span>
-                      <span className="payment-meta">{method.processingTime}</span>
-                    </button>
-                  )
-                })}
+            {uiState === 'choose-method' ? (
+              <div className="modal-section">
+                <h3>Choose a payment method</h3>
+                <div className="payment-method-grid">
+                  {availableMethods.map((method) => {
+                    const active = selectedMethod === method.id
+                    const isPending = pendingMethodId === method.id && finalizePaymentMutation.isPending
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        className={`payment-method ${active ? 'active' : ''}`}
+                        onClick={() => setSelectedMethod(method.id)}
+                        disabled={finalizePaymentMutation.isPending}
+                      >
+                        <span className="payment-title">{method.label}</span>
+                        <span className="payment-description">{method.description}</span>
+                        <span className="payment-meta">{isPending ? 'Processing…' : method.processingTime}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="modal-section">
+                <h3>Order summary</h3>
+                <div className="confirm-summary">
+                  <div>
+                    <span className="summary-label">Payment method</span>
+                    <span className="summary-value">
+                      {availableMethods.find((method) => method.id === selectedMethod)?.label ?? '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="summary-label">Processing time</span>
+                    <span className="summary-value">
+                      {availableMethods.find((method) => method.id === selectedMethod)?.processingTime ?? '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {paymentError && <p className="modal-error">{paymentError}</p>}
 
@@ -299,21 +355,74 @@ export default function BillingPage() {
                   setSelectedPackage(null)
                   setSelectedMethod(null)
                   setPaymentError(null)
+                  setUiState(null)
                   finalizePaymentMutation.reset()
                   createSessionMutation.reset()
                 }}
-                disabled={createSessionMutation.isPending || finalizePaymentMutation.isPending}
+                disabled={finalizePaymentMutation.isPending}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className="primary"
-                onClick={confirmPayment}
-                disabled={finalizePaymentMutation.isPending}
+                onClick={uiState === 'confirm' ? finalizePayment : confirmSelection}
+                disabled={finalizePaymentMutation.isPending || (!selectedMethod && uiState === 'choose-method')}
               >
-                {finalizePaymentMutation.isPending ? 'Processing…' : 'Confirm payment'}
+                {finalizePaymentMutation.isPending ? 'Processing…' : uiState === 'confirm' ? 'Confirm purchase' : 'Continue'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uiState === 'success' && successDetails && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-panel success">
+            <div className="modal-header">
+              <h2>Plan activated</h2>
+              <p>
+                You’ve added <strong>{successDetails.pointsAwarded}</strong> points with the{' '}
+                <strong>{successDetails.packageName}</strong> plan.
+              </p>
+            </div>
+            <div className="modal-summary">
+              <div>
+                <span className="summary-label">Plan</span>
+                <span className="summary-value">
+                  {successDetails.packageName}
+                  <span className="summary-interval">/${successDetails.interval}</span>
+                </span>
+              </div>
+              <div>
+                <span className="summary-label">Next renewal</span>
+                <span className="summary-value">
+                  {successDetails.nextPaymentDue
+                    ? new Date(successDetails.nextPaymentDue).toLocaleDateString()
+                    : 'TBD'}
+                </span>
+              </div>
+            </div>
+            <div className="modal-section">
+              <p className="success-copy">
+                Your balance has been updated. You can head back to the stock order workflow to start spending points.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setSuccessDetails(null)
+                  setUiState(null)
+                  setSelectedPackage(null)
+                }}
+              >
+                Close
+              </button>
+              <Link href="/stock/order" className="primary">
+                Go to stock order
+              </Link>
             </div>
           </div>
         </div>
