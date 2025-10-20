@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card, StatusBadge, Toast } from '../../components'
-import { useSession } from '../../lib/session'
+import { Card, StatusBadge, Toast } from '../../../components'
+import { useSession } from '../../../lib/session'
 import {
   buildDownloadUrl,
   fetchDownloadHistory,
@@ -11,7 +11,7 @@ import {
   requestRedownload,
   type ResponseType,
   type StockOrderTask,
-} from '../../lib/stock'
+} from '../../../lib/stock'
 
 const DEFAULT_LIMIT = 50
 

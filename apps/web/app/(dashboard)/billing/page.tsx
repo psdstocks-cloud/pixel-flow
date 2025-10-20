@@ -3,14 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Card, Toast } from '../../components'
+import { Card, Toast } from '../../../components'
 import {
   queries,
   type MockPaymentMethod,
   type MockPaymentSession,
   type PackageWithSubscription,
-} from '../../lib/billing'
-import { useSession } from '../../lib/session'
+} from '../../../lib/billing'
+import { useSession } from '../../../lib/session'
 
 type PackageCardProps = {
   pkg: PackageWithSubscription
