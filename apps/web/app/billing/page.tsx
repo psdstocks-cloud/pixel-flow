@@ -69,7 +69,7 @@ function PackageCard({ pkg, onSubscribe, isProcessing }: PackageCardProps) {
 }
 
 export default function BillingPage() {
-  const { session, status: sessionStatus, setSession } = useSession()
+  const { session, status: sessionStatus } = useSession()
   const queryClient = useQueryClient()
   const userId = session?.userId ?? null
   const isAuthenticated = Boolean(userId)

@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto'
+
 export type PackageWithSubscription = {
   id: string
   name: string
@@ -42,8 +44,6 @@ type InternalPaymentSession = {
   createdAt: number
   paymentMethods: MockPaymentMethod[]
 }
-
-const { randomUUID } = require('crypto') as { randomUUID: () => string }
 
 const PAYMENT_METHODS: MockPaymentMethod[] = [
   {
