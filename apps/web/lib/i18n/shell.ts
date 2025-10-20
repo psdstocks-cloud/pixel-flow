@@ -6,12 +6,10 @@ export type ShellMessages = typeof shellEn
 export async function loadShellMessages(locale: Locale): Promise<ShellMessages> {
   switch (locale) {
     case 'ar': {
-      const module = await import('../../locales/ar/shell.json')
-      return module.default as ShellMessages
+      return (await import('../../locales/ar/shell.json')).default as ShellMessages
     }
     default: {
-      const module = await import('../../locales/en/shell.json')
-      return module.default as ShellMessages
+      return (await import('../../locales/en/shell.json')).default as ShellMessages
     }
   }
 }

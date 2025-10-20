@@ -6,12 +6,10 @@ export type HomeMessages = typeof homeEn
 export async function loadHomeMessages(locale: Locale): Promise<HomeMessages> {
   switch (locale) {
     case 'ar': {
-      const module = await import('../../locales/ar/home.json')
-      return module.default as HomeMessages
+      return (await import('../../locales/ar/home.json')).default as HomeMessages
     }
     default: {
-      const module = await import('../../locales/en/home.json')
-      return module.default as HomeMessages
+      return (await import('../../locales/en/home.json')).default as HomeMessages
     }
   }
 }

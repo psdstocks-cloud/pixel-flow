@@ -1,5 +1,5 @@
 import { cookies, headers } from 'next/headers'
-import { DEFAULT_LOCALE, LOCALE_COOKIE, type Locale, isSupportedLocale } from './i18n-config'
+import { DEFAULT_LOCALE, LOCALE_COOKIE, type Locale, isSupportedLocale } from '../i18n-config'
 
 const RTL_LOCALES = new Set<Locale>(['ar'])
 
