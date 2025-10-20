@@ -16,7 +16,12 @@
       "✓ تم توليد أكثر من 5,000 صورة بالذكاء الاصطناعي",
       "✓ بدون اشتراك مطلوب",
       "✓ تحميل فوري"
-    ]
+    ],
+    "media": {
+      "videoUrl": "https://cdn.pixel-flow.com/media/pixel-flow-hero.mp4",
+      "posterUrl": "https://cdn.pixel-flow.com/media/pixel-flow-hero-poster.jpg",
+      "alt": "معاينة فيديو لتدفق عمل Pixel Flow"
+    }
   },
   "heroGrid": {
     "items": [
@@ -53,6 +58,7 @@
   },
   "features": {
     "headline": "كل ما تحتاجه في مكان واحد",
+    "tabAll": "الكل",
     "items": [
       {
         "id": "stock",
@@ -107,7 +113,9 @@
         "description": "احصل على صورتك فورًا. استخدمها في أي مكان—المواقع الإلكترونية، ووسائل التواصل الاجتماعي، والعروض التقديمية."
       }
     ],
-    "cta": "ابدأ تجربتك المجانية"
+    "cta": "ابدأ تجربتك المجانية",
+    "videoUrl": "https://cdn.pixel-flow.com/media/pixel-flow-workflow.mp4",
+    "videoCaption": "شاهد كيف يقودك Pixel Flow من الفكرة إلى التحميل النهائي في دقائق"
   },
   "pricingPreview": {
     "headline": "أسعار بسيطة وشفافة",

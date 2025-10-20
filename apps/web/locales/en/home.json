@@ -16,7 +16,12 @@
       "5,000+ AI images generated",
       "No subscription required",
       "Instant downloads"
-    ]
+    ],
+    "media": {
+      "videoUrl": "https://cdn.pixel-flow.com/media/pixel-flow-hero.mp4",
+      "posterUrl": "https://cdn.pixel-flow.com/media/pixel-flow-hero-poster.jpg",
+      "alt": "Pixel Flow stock workflow preview video"
+    }
   },
   "heroGrid": {
     "items": [
@@ -53,6 +58,7 @@
   },
   "features": {
     "headline": "Everything You Need in One Place",
+    "tabAll": "All",
     "items": [
       {
         "id": "stock",
@@ -107,7 +113,9 @@
         "description": "Get your image instantly. Use it anywhere—websites, social media, presentations, anywhere."
       }
     ],
-    "cta": "Start Your Free Trial"
+    "cta": "Start Your Free Trial",
+    "videoUrl": "https://cdn.pixel-flow.com/media/pixel-flow-workflow.mp4",
+    "videoCaption": "See Pixel Flow take you from idea to final download in minutes."
   },
   "pricingPreview": {
     "headline": "Simple, Transparent Pricing",
