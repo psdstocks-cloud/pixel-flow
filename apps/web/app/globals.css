@@ -413,6 +413,128 @@ textarea:focus-visible {
   color: var(--pf-text-muted);
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  backdrop-filter: blur(18px);
+  background: rgba(2, 6, 23, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 40px 16px;
+  z-index: 999;
+}
+
+.modal-panel {
+  width: min(520px, 100%);
+  background: rgba(15, 23, 42, 0.82);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 30px 80px rgba(2, 6, 23, 0.45);
+  padding: 32px;
+  display: grid;
+  gap: 28px;
+  position: relative;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.modal-header p {
+  margin: 6px 0 0;
+}
+
+.modal-summary {
+  display: flex;
+  gap: 24px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+.summary-label {
+  display: block;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pf-text-subtle);
+}
+
+.summary-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--pf-text);
+}
+
+.summary-interval {
+  font-size: 14px;
+  color: var(--pf-text-subtle);
+  margin-left: 4px;
+}
+
+.modal-section h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.payment-method-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.payment-method {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.55);
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.payment-method:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 22px 46px rgba(2, 6, 23, 0.32);
+}
+
+.payment-method.active {
+  border-color: rgba(168, 85, 247, 0.85);
+  background: rgba(168, 85, 247, 0.18);
+  box-shadow: 0 20px 42px rgba(168, 85, 247, 0.22);
+}
+
+.payment-title {
+  font-weight: 600;
+  color: var(--pf-text);
+}
+
+.payment-description {
+  font-size: 14px;
+  color: var(--pf-text-muted);
+}
+
+.payment-meta {
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.68);
+}
+
+.modal-error {
+  margin: 0;
+  color: var(--pf-error);
+  font-weight: 500;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .bulk-section {
   display: grid;
   gap: 24px;

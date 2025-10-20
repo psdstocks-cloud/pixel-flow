@@ -1,5 +1,13 @@
 import { authOptions } from "../../../../lib/auth-options";
-import { listMockPackages, simulateSubscription } from "../../../../lib/billing";
+import {
+  consumeMockPaymentSession,
+  findMockPaymentMethod,
+  findMockPackage,
+} from "../../../../lib/billing";
+import {
+  creditBalance,
+  getOrCreateBalance,
+} from "@pixel-flow/database";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -16,42 +24,53 @@ const returnUrl = absoluteUrl("/downloads");
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    let packageIdFromBody: string | null = null;
-    try {
-      const body = await req.json();
-      if (body && typeof body.packageId === 'string') {
-        packageIdFromBody = body.packageId;
-      } else if (body && typeof body.priceId === 'string') {
-        packageIdFromBody = body.priceId;
-      }
-    } catch {
-      packageIdFromBody = null;
-    }
+    const body = await req.json().catch(() => ({}));
+    const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : null;
+    const paymentMethodId = typeof body?.paymentMethodId === 'string' ? body.paymentMethodId : null;
 
     if (!session?.user) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const packageId = packageIdFromBody ?? (() => {
-      const searchParams = new URL(req.url).searchParams;
-      const id = searchParams.get('packageId') || searchParams.get('priceId');
-      return id && id.length > 0 ? id : null;
-    })() ?? (() => {
-      const mockPackages = listMockPackages();
-      return mockPackages.length > 0 ? mockPackages[0].id : null;
-    })();
-
-    if (!packageId) {
-      return new NextResponse("No billing packages available", { status: 400 });
+    if (!sessionId) {
+      return new NextResponse("Payment session is required", { status: 400 });
     }
 
-    const result = simulateSubscription(packageId);
+    const paymentSession = consumeMockPaymentSession(sessionId);
+    if (!paymentSession || paymentSession.userId !== session.user.id) {
+      return new NextResponse("Payment session not found or expired", { status: 404 });
+    }
+
+    const selectedPackage = findMockPackage(paymentSession.packageId);
+    if (!selectedPackage) {
+      return new NextResponse("Selected package is no longer available", { status: 404 });
+    }
+
+    if (!paymentMethodId || !findMockPaymentMethod(paymentMethodId)) {
+      return new NextResponse("Payment method is required", { status: 400 });
+    }
+
+    const balance = await creditBalance(session.user.id, selectedPackage.points);
+    const now = new Date();
+    const nextPaymentDue = new Date(now);
+    if (selectedPackage.interval === 'year') {
+      nextPaymentDue.setFullYear(now.getFullYear() + 1);
+    } else {
+      nextPaymentDue.setMonth(now.getMonth() + 1);
+    }
+
+    await getOrCreateBalance(session.user.id);
 
     return NextResponse.json({
-      success: result.success,
-      message: result.message,
-      pointsAwarded: result.pointsAwarded,
-      packageId: result.packageId,
+      success: true,
+      message: `Payment confirmed via mock gateway. ${selectedPackage.points} points added to your account.`,
+      pointsAwarded: selectedPackage.points,
+      package: selectedPackage,
+      balance: {
+        userId: balance.userId,
+        points: balance.points,
+      },
+      nextPaymentDue: nextPaymentDue.toISOString(),
       redirectUrl: returnUrl,
     });
   } catch (error) {

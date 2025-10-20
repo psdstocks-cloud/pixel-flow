@@ -2,17 +2,23 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
+import { useMemo, useState } from 'react'
 import { Card, Toast } from '../../components'
-import { queries, type PackageWithSubscription } from '../../lib/billing'
+import {
+  queries,
+  type MockPaymentMethod,
+  type MockPaymentSession,
+  type PackageWithSubscription,
+} from '../../lib/billing'
 import { useSession } from '../../lib/session'
 
 type PackageCardProps = {
   pkg: PackageWithSubscription
-  onSubscribe: (packageId: string) => void
-  isSubscribing: boolean
+  onSubscribe: (pkg: PackageWithSubscription) => void
+  isProcessing: boolean
 }
 
-function PackageCard({ pkg, onSubscribe, isSubscribing }: PackageCardProps) {
+function PackageCard({ pkg, onSubscribe, isProcessing }: PackageCardProps) {
   const hasActiveSubscription = pkg.subscription?.status === 'active'
   const isCanceled = pkg.subscription?.status === 'canceled'
 
@@ -52,8 +58,8 @@ function PackageCard({ pkg, onSubscribe, isSubscribing }: PackageCardProps) {
         <button
           type="button"
           className={`w-full ${hasActiveSubscription ? 'secondary' : 'primary'}`}
-          onClick={() => onSubscribe(pkg.id)}
-          disabled={isSubscribing || hasActiveSubscription}
+          onClick={() => onSubscribe(pkg)}
+          disabled={isProcessing || hasActiveSubscription}
         >
           {hasActiveSubscription ? 'Current Plan' : isCanceled ? 'Reactivate' : 'Subscribe'}
         </button>
@@ -63,10 +69,14 @@ function PackageCard({ pkg, onSubscribe, isSubscribing }: PackageCardProps) {
 }
 
 export default function BillingPage() {
-  const { session, status: sessionStatus } = useSession()
+  const { session, status: sessionStatus, setSession } = useSession()
   const queryClient = useQueryClient()
   const userId = session?.userId ?? null
   const isAuthenticated = Boolean(userId)
+  const [selectedPackage, setSelectedPackage] = useState<PackageWithSubscription | null>(null)
+  const [paymentSession, setPaymentSession] = useState<MockPaymentSession | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [selectedMethod, setSelectedMethod] = useState<string | null>(null)
 
   const packagesQuery = useQuery({
     queryKey: queries.packages,
@@ -78,26 +88,80 @@ export default function BillingPage() {
     enabled: isAuthenticated,
   })
 
-  const subscribeMutation = useMutation({
-    mutationFn: async (packageId: string) => {
+  const createSessionMutation = useMutation({
+    mutationFn: async (pkg: PackageWithSubscription) => {
+      const response = await fetch('/api/billing/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: pkg.id }),
+      })
+      if (!response.ok) throw new Error('Unable to start checkout')
+      return response.json() as Promise<{
+        session: MockPaymentSession
+        package: PackageWithSubscription
+      }>
+    },
+    onSuccess: (data) => {
+      setSelectedPackage(data.package)
+      setPaymentSession(data.session)
+      setSelectedMethod(null)
+      setPaymentError(null)
+    },
+  })
+
+  const finalizePaymentMutation = useMutation({
+    mutationFn: async (variables: { sessionId: string; paymentMethodId: string }) => {
       const response = await fetch('/api/billing/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify(variables),
       })
-      if (!response.ok) throw new Error('Failed to subscribe')
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Failed to confirm payment')
+      }
       return response.json() as Promise<{
         success: boolean
         message: string
         pointsAwarded: number
+        nextPaymentDue: string
+        balance: { userId: string; points: number }
+        package: PackageWithSubscription
         redirectUrl: string
       }>
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queries.packages })
-      queryClient.invalidateQueries({ queryKey: ['stock', 'balance', userId] })
+      void queryClient.invalidateQueries({ queryKey: queries.packages })
+      if (userId) {
+        void queryClient.invalidateQueries({ queryKey: ['stock', 'balance', userId] })
+      }
     },
   })
+
+  const availableMethods: MockPaymentMethod[] = useMemo(() => {
+    return paymentSession?.paymentMethods ?? []
+  }, [paymentSession])
+
+  const closeModal = () => {
+    setPaymentSession(null)
+    setSelectedPackage(null)
+    setSelectedMethod(null)
+    setPaymentError(null)
+    finalizePaymentMutation.reset()
+    createSessionMutation.reset()
+  }
+
+  const confirmPayment = () => {
+    if (!paymentSession || !selectedMethod) {
+      setPaymentError('Please select a payment method to continue.')
+      return
+    }
+    setPaymentError(null)
+    finalizePaymentMutation.mutate({
+      sessionId: paymentSession.id,
+      paymentMethodId: selectedMethod,
+    })
+  }
 
   if (sessionStatus === 'loading') {
     return (
@@ -127,21 +191,26 @@ export default function BillingPage() {
         <p className="note">Payment processing is currently handled manually while we finalize our Stripe integration.</p>
       </section>
 
-      {subscribeMutation.isError && (
+      {createSessionMutation.isError && (
         <Toast
-          title="Subscription failed"
-          message={subscribeMutation.error instanceof Error ? subscribeMutation.error.message : 'Unable to process subscription.'}
+          title="Unable to start checkout"
+          message={createSessionMutation.error instanceof Error ? createSessionMutation.error.message : 'We could not create a payment session. Please try again.'}
           variant="error"
         />
       )}
 
-      {subscribeMutation.isSuccess && (
+      {finalizePaymentMutation.isError && (
         <Toast
-          title="Subscription request received"
-          message={
-            subscribeMutation.data?.message ??
-            'We have recorded your request and will be in touch to complete payment.'
-          }
+          title="Payment failed"
+          message={finalizePaymentMutation.error instanceof Error ? finalizePaymentMutation.error.message : 'Unable to process your payment.'}
+          variant="error"
+        />
+      )}
+
+      {finalizePaymentMutation.isSuccess && (
+        <Toast
+          title="Payment confirmed"
+          message={finalizePaymentMutation.data?.message}
           variant="success"
         />
       )}
@@ -165,13 +234,81 @@ export default function BillingPage() {
               <PackageCard
                 key={pkg.id}
                 pkg={pkg}
-                onSubscribe={(packageId) => subscribeMutation.mutate(packageId)}
-                isSubscribing={subscribeMutation.isPending}
+                onSubscribe={(selected) => createSessionMutation.mutate(selected)}
+                isProcessing={createSessionMutation.isPending}
               />
             ))
           )}
         </div>
       </div>
+
+      {paymentSession && selectedPackage && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-panel">
+            <div className="modal-header">
+              <h2>Select payment method</h2>
+              <p>Complete your subscription for the <strong>{selectedPackage.name}</strong> plan.</p>
+            </div>
+
+            <div className="modal-summary">
+              <div>
+                <span className="summary-label">Price</span>
+                <span className="summary-value">
+                  ${selectedPackage.price}
+                  <span className="summary-interval">/{selectedPackage.interval}</span>
+                </span>
+              </div>
+              <div>
+                <span className="summary-label">Points credited</span>
+                <span className="summary-value">{selectedPackage.points}</span>
+              </div>
+            </div>
+
+            <div className="modal-section">
+              <h3>Choose a payment method</h3>
+              <div className="payment-method-grid">
+                {availableMethods.map((method) => {
+                  const active = selectedMethod === method.id
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      className={`payment-method ${active ? 'active' : ''}`}
+                      onClick={() => setSelectedMethod(method.id)}
+                      disabled={finalizePaymentMutation.isPending}
+                    >
+                      <span className="payment-title">{method.label}</span>
+                      <span className="payment-description">{method.description}</span>
+                      <span className="payment-meta">{method.processingTime}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {paymentError && <p className="modal-error">{paymentError}</p>}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={closeModal}
+                disabled={createSessionMutation.isPending || finalizePaymentMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={confirmPayment}
+                disabled={finalizePaymentMutation.isPending}
+              >
+                {finalizePaymentMutation.isPending ? 'Processing…' : 'Confirm payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
