@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Card, Toast } from '../../../components'
+import { Card, Toast, useNotifications } from '../../../components'
 import {
   queries,
   type MockPaymentMethod,
@@ -70,6 +70,7 @@ function PackageCard({ pkg, onSubscribe, isProcessing }: PackageCardProps) {
 
 export default function BillingPage() {
   const { session, status: sessionStatus, setSession } = useSession()
+  const { notify } = useNotifications()
   const queryClient = useQueryClient()
   const userId = session?.userId ?? null
   const isAuthenticated = Boolean(userId)
@@ -106,6 +107,14 @@ export default function BillingPage() {
       setPaymentSession(data.session)
       setSelectedMethod(null)
       setPaymentError(null)
+      notify({ title: 'Checkout started', message: 'Select a payment method to finish subscribing.' })
+    },
+    onError: (error) => {
+      notify({
+        title: 'Unable to start checkout',
+        message: error instanceof Error ? error.message : 'We could not create a payment session. Please try again.',
+        variant: 'error',
+      })
     },
   })
 
@@ -148,6 +157,18 @@ export default function BillingPage() {
       setSelectedMethod(null)
       setPaymentError(null)
       createSessionMutation.reset()
+      notify({
+        title: 'Payment confirmed',
+        message: data.message,
+        variant: 'success',
+      })
+    },
+    onError: (error) => {
+      notify({
+        title: 'Payment failed',
+        message: error instanceof Error ? error.message : 'Unable to process your payment.',
+        variant: 'error',
+      })
     },
   })
 
@@ -195,30 +216,6 @@ export default function BillingPage() {
         <p>Select a package that fits your stock download needs. Points are credited monthly.</p>
         <p className="note">Payment processing is currently handled manually while we finalize our Stripe integration.</p>
       </section>
-
-      {createSessionMutation.isError && (
-        <Toast
-          title="Unable to start checkout"
-          message={createSessionMutation.error instanceof Error ? createSessionMutation.error.message : 'We could not create a payment session. Please try again.'}
-          variant="error"
-        />
-      )}
-
-      {finalizePaymentMutation.isError && (
-        <Toast
-          title="Payment failed"
-          message={finalizePaymentMutation.error instanceof Error ? finalizePaymentMutation.error.message : 'Unable to process your payment.'}
-          variant="error"
-        />
-      )}
-
-      {finalizePaymentMutation.isSuccess && (
-        <Toast
-          title="Payment confirmed"
-          message={finalizePaymentMutation.data?.message}
-          variant="success"
-        />
-      )}
 
       <div className="tab-panel single">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card, Field, StatusBadge, Toast } from '../../../../components'
+import { Card, Field, StatusBadge, Toast, useNotifications } from '../../../../components'
 import {
   buildDownloadUrl,
   commitOrder,
@@ -68,6 +68,7 @@ function formatCost(task: StockOrderTask) {
 
 export default function StockOrderPage() {
   const { session, status: sessionStatus, error: sessionError } = useSession()
+  const { notify } = useNotifications()
   const queryClient = useQueryClient()
 
   const userId = session?.userId ?? null
@@ -140,9 +141,15 @@ export default function StockOrderPage() {
       }
     },
     onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to preview links. Please try again.'
       setPreviewFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to preview links. Please try again.',
+        message,
+      })
+      notify({
+        title: 'Preview failed',
+        message,
+        variant: 'error',
       })
     },
   })
@@ -192,6 +199,14 @@ export default function StockOrderPage() {
             ? 'Some orders could not be queued. Review the errors below.'
             : 'All selected orders were queued successfully.',
       })
+      notify({
+        title: data.failures.length > 0 ? 'Orders partially queued' : 'Orders queued',
+        message:
+          data.failures.length > 0
+            ? 'Some orders could not be queued. Check the errors below.'
+            : 'All selected orders were queued successfully.',
+        variant: data.failures.length > 0 ? 'error' : 'success',
+      })
 
       if (data.failures.length === 0) {
         setPreviewEntries([])
@@ -200,9 +215,15 @@ export default function StockOrderPage() {
       }
     },
     onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to queue the selected orders.'
       setCommitFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to queue the selected orders.',
+        message,
+      })
+      notify({
+        title: 'Unable to queue orders',
+        message,
+        variant: 'error',
       })
     },
   })
@@ -233,6 +254,11 @@ export default function StockOrderPage() {
     event.preventDefault()
     if (!userId) {
       setPreviewFeedback({ type: 'error', message: 'Sign in to preview and queue stock downloads.' })
+      notify({
+        title: 'Sign in required',
+        message: 'Create an account, activate it, and purchase a points package to continue.',
+        variant: 'error',
+      })
       return
     }
 
@@ -242,6 +268,11 @@ export default function StockOrderPage() {
 
     if (items.length === 0) {
       setPreviewFeedback({ type: 'error', message: 'Add at least one asset URL before previewing.' })
+      notify({
+        title: 'Add URLs first',
+        message: 'Add at least one asset URL before previewing.',
+        variant: 'error',
+      })
       return
     }
 

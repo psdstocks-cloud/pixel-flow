@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card, StatusBadge, Toast } from '../../../components'
+import { Card, StatusBadge, Toast, useNotifications } from '../../../components'
 import { useSession } from '../../../lib/session'
 import {
   buildDownloadUrl,
@@ -90,7 +90,7 @@ export default function DownloadsPage() {
   const userId = session?.userId ?? null
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [responseType, setResponseType] = useState<ResponseType>('any')
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const { notify } = useNotifications()
 
   const historyQuery = useQuery({
     queryKey: userId ? queries.downloadsHistory(userId, DEFAULT_LIMIT, statusFilter ?? 'all') : ['downloads', 'anonymous'],
@@ -114,15 +114,24 @@ export default function DownloadsPage() {
       })
       if (download.downloadUrl) {
         window.open(download.downloadUrl, '_blank', 'noopener,noreferrer')
-        setFeedback({ type: 'success', message: 'Download link refreshed in a new tab.' })
+        notify({
+          title: 'Download refreshed',
+          message: 'Opened the latest link in a new tab.',
+          variant: 'success',
+        })
       } else {
-        setFeedback({ type: 'error', message: 'No download link is available yet. Try again soon.' })
+        notify({
+          title: 'Download not ready',
+          message: 'No download link is available yet. Try again soon.',
+          variant: 'error',
+        })
       }
     },
     onError: (err: unknown) => {
-      setFeedback({
-        type: 'error',
+      notify({
+        title: 'Unable to refresh download',
         message: err instanceof Error ? err.message : 'Unable to refresh the download link.',
+        variant: 'error',
       })
     },
   })
@@ -151,8 +160,6 @@ export default function DownloadsPage() {
           variant="error"
         />
       ) : null}
-      {feedback ? <Toast title={feedback.type === 'success' ? 'Success' : 'Action needed'} message={feedback.message} variant={feedback.type} /> : null}
-
       <div className="glass-grid">
         <Card
           title="Filters"
