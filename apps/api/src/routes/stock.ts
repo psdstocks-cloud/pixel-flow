@@ -13,18 +13,10 @@ import { requireUser, optionalUser, AuthenticatedRequest } from '../middleware/a
 
 const router = express.Router()
 
-const ALLOWED_ORIGIN = process.env.STOCK_API_ALLOWED_ORIGIN || '*'
 const DEFAULT_NOTIFICATION_CHANNEL = process.env.NEHTW_NOTIFY
 
-router.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204)
-  }
-  return next()
-})
+// CORS is handled by Express middleware in index.ts
+// No need for custom CORS headers here
 
 router.use(optionalUser)
 

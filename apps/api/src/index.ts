@@ -9,9 +9,33 @@ dotenv.config()
 const app = express()
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000
 
+// CORS configuration
+const allowedOrigins = [
+  'https://pixel-flow-sigma.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:3001',
+]
+
 // Middleware
 app.use(morgan('combined'))
-app.use(cors())
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true)
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        console.warn(`CORS blocked origin: ${origin}`)
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  })
+)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
