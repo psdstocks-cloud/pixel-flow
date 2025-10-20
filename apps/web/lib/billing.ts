@@ -37,14 +37,6 @@ export type MockPaymentSession = {
   paymentMethods: MockPaymentMethod[]
 }
 
-type InternalPaymentSession = {
-  id: string
-  userId: string
-  packageId: string
-  createdAt: number
-  paymentMethods: MockPaymentMethod[]
-}
-
 const PAYMENT_METHODS: MockPaymentMethod[] = [
   {
     id: 'card',
@@ -65,18 +57,6 @@ const PAYMENT_METHODS: MockPaymentMethod[] = [
     processingTime: '1-2 business days',
   },
 ]
-
-const SESSION_TTL_MS = 15 * 60 * 1000
-const sessions = new Map<string, InternalPaymentSession>()
-
-function cleanupExpiredSessions() {
-  const now = Date.now()
-  for (const [id, session] of sessions.entries()) {
-    if (now - session.createdAt > SESSION_TTL_MS) {
-      sessions.delete(id)
-    }
-  }
-}
 
 const MOCK_PACKAGES: PackageWithSubscription[] = [
   {
@@ -123,44 +103,18 @@ export function findMockPackage(packageId: string): PackageWithSubscription | un
 }
 
 export function createMockPaymentSession(userId: string, packageId: string): MockPaymentSession {
-  cleanupExpiredSessions()
-
-  const id = randomUUID()
-  const createdAt = Date.now()
-  const paymentMethods = [...PAYMENT_METHODS]
-
-  sessions.set(id, {
-    id,
-    createdAt,
-    paymentMethods,
-    packageId,
-    userId,
-  })
-
+  const createdAt = new Date().toISOString()
   return {
-    id,
+    id: randomUUID(),
     userId,
     packageId,
-    paymentMethods,
-    createdAt: new Date(createdAt).toISOString(),
+    createdAt,
+    paymentMethods: listMockPaymentMethods(),
   }
-}
-
-export function getMockPaymentSession(sessionId: string): InternalPaymentSession | null {
-  cleanupExpiredSessions()
-  return sessions.get(sessionId) ?? null
-}
-
-export function consumeMockPaymentSession(sessionId: string): InternalPaymentSession | null {
-  const session = getMockPaymentSession(sessionId)
-  if (session) {
-    sessions.delete(sessionId)
-  }
-  return session
 }
 
 export function listMockPaymentMethods(): MockPaymentMethod[] {
-  return PAYMENT_METHODS
+  return PAYMENT_METHODS.map((method) => ({ ...method }))
 }
 
 export function findMockPaymentMethod(methodId: string): MockPaymentMethod | undefined {

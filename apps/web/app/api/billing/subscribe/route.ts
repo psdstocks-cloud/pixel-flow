@@ -1,9 +1,5 @@
 import { authOptions } from "../../../../lib/auth-options";
-import {
-  consumeMockPaymentSession,
-  findMockPaymentMethod,
-  findMockPackage,
-} from "../../../../lib/billing";
+import { findMockPaymentMethod, findMockPackage } from "../../../../lib/billing";
 import {
   creditBalance,
   getOrCreateBalance,
@@ -27,6 +23,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : null;
     const paymentMethodId = typeof body?.paymentMethodId === 'string' ? body.paymentMethodId : null;
+    const packageId = typeof body?.packageId === 'string' ? body.packageId : null;
 
     if (!session?.user) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -36,12 +33,11 @@ export async function POST(req: Request) {
       return new NextResponse("Payment session is required", { status: 400 });
     }
 
-    const paymentSession = consumeMockPaymentSession(sessionId);
-    if (!paymentSession || paymentSession.userId !== session.user.id) {
-      return new NextResponse("Payment session not found or expired", { status: 404 });
+    if (!packageId) {
+      return new NextResponse("Package selection is required", { status: 400 });
     }
 
-    const selectedPackage = findMockPackage(paymentSession.packageId);
+    const selectedPackage = findMockPackage(packageId);
     if (!selectedPackage) {
       return new NextResponse("Selected package is no longer available", { status: 404 });
     }

@@ -13,7 +13,7 @@ export type SessionContextValue = {
   status: 'loading' | 'ready' | 'error'
   error: Error | null
   refresh: () => Promise<void>
-  setSession: (session: SessionState | null) => void
+  setSession: React.Dispatch<React.SetStateAction<SessionState | null>>
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)

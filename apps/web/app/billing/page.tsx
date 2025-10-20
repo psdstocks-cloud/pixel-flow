@@ -69,7 +69,7 @@ function PackageCard({ pkg, onSubscribe, isProcessing }: PackageCardProps) {
 }
 
 export default function BillingPage() {
-  const { session, status: sessionStatus } = useSession()
+  const { session, status: sessionStatus, setSession } = useSession()
   const queryClient = useQueryClient()
   const userId = session?.userId ?? null
   const isAuthenticated = Boolean(userId)
@@ -110,7 +110,7 @@ export default function BillingPage() {
   })
 
   const finalizePaymentMutation = useMutation({
-    mutationFn: async (variables: { sessionId: string; paymentMethodId: string }) => {
+    mutationFn: async (variables: { sessionId: string; paymentMethodId: string; packageId: string }) => {
       const response = await fetch('/api/billing/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,11 +130,24 @@ export default function BillingPage() {
         redirectUrl: string
       }>
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: queries.packages })
       if (userId) {
         void queryClient.invalidateQueries({ queryKey: ['stock', 'balance', userId] })
       }
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              nextPaymentDue: data.nextPaymentDue,
+            }
+          : prev,
+      )
+      setPaymentSession(null)
+      setSelectedPackage(null)
+      setSelectedMethod(null)
+      setPaymentError(null)
+      createSessionMutation.reset()
     },
   })
 
@@ -142,17 +155,8 @@ export default function BillingPage() {
     return paymentSession?.paymentMethods ?? []
   }, [paymentSession])
 
-  const closeModal = () => {
-    setPaymentSession(null)
-    setSelectedPackage(null)
-    setSelectedMethod(null)
-    setPaymentError(null)
-    finalizePaymentMutation.reset()
-    createSessionMutation.reset()
-  }
-
   const confirmPayment = () => {
-    if (!paymentSession || !selectedMethod) {
+    if (!paymentSession || !selectedMethod || !selectedPackage) {
       setPaymentError('Please select a payment method to continue.')
       return
     }
@@ -160,6 +164,7 @@ export default function BillingPage() {
     finalizePaymentMutation.mutate({
       sessionId: paymentSession.id,
       paymentMethodId: selectedMethod,
+      packageId: selectedPackage.id,
     })
   }
 
@@ -292,7 +297,14 @@ export default function BillingPage() {
               <button
                 type="button"
                 className="secondary"
-                onClick={closeModal}
+                onClick={() => {
+                  setPaymentSession(null)
+                  setSelectedPackage(null)
+                  setSelectedMethod(null)
+                  setPaymentError(null)
+                  finalizePaymentMutation.reset()
+                  createSessionMutation.reset()
+                }}
                 disabled={createSessionMutation.isPending || finalizePaymentMutation.isPending}
               >
                 Cancel
