@@ -9,7 +9,7 @@ const NAV_LINKS: DashboardNavLink[] = [
   { href: '/stock/order', label: 'Stock order' },
   { href: '/downloads', label: 'Downloads' },
   { href: '/billing', label: 'Billing' },
-  { href: '/ai-generation', label: 'AI generation', soon: true },
+  { href: '/ai-generation', label: 'AI generation (beta)', soon: true },
   { href: '/account-insights', label: 'Account insights', soon: true },
 ]
 
