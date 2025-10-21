@@ -12,8 +12,10 @@ import {
   Star,
   Sparkle,
 } from 'lucide-react'
+import Lottie from 'lottie-react'
 import type { HomeMessages } from '../../lib/i18n/home'
 import { landingTheme } from '../../styles/landingTheme'
+import photoDownloadingAnimation from '../../assets/lottie/photoDownloading.json'
 import { LandingSectionHeader } from './SectionHeader'
 import { FeatureCard } from './FeatureCard'
 import { PricingCard } from './PricingCard'
@@ -169,18 +171,39 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
           ))}
         </div>
         <div className="landing-features__grid">
-          {filteredFeatures.map((feature, index) => (
-            <FeatureCard
-              key={feature.id}
-              id={feature.id}
-              title={feature.title}
-              description={feature.description}
-              pricing={feature.pricing}
-              ctaLabel={feature.cta}
-              illustrationSlot={feature.icon ? <span className="landing-features__emoji" aria-hidden>{feature.icon}</span> : undefined}
-              variant={index === 0 ? 'primary' : 'secondary'}
-            />
-          ))}
+          {filteredFeatures.map((feature, index) => {
+            const isPrimary = index === 0
+            const illustration = feature.id === 'stock'
+              ? (
+                  <Lottie
+                    animationData={photoDownloadingAnimation}
+                    loop
+                    autoplay
+                    className="feature-card__lottie"
+                    aria-hidden
+                  />
+                )
+              : feature.icon
+                ? (
+                    <span className="landing-features__emoji" aria-hidden>
+                      {feature.icon}
+                    </span>
+                  )
+                : undefined
+
+            return (
+              <FeatureCard
+                key={feature.id}
+                id={feature.id}
+                title={feature.title}
+                description={feature.description}
+                pricing={feature.pricing}
+                ctaLabel={feature.cta}
+                illustrationSlot={illustration}
+                variant={isPrimary ? 'primary' : 'secondary'}
+              />
+            )
+          })}
         </div>
       </section>
 

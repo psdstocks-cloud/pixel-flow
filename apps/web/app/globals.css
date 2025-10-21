@@ -796,13 +796,22 @@ textarea:focus-visible {
 
 .field-root {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
 }
 
 .field-label {
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--pf-type-heading-s);
+  font-weight: 600;
   color: var(--pf-text);
+}
+
+.field-label__required {
+  color: var(--pf-error);
+  margin-inline-start: 2px;
 }
 
 .field-control {
@@ -811,12 +820,12 @@ textarea:focus-visible {
 }
 
 .field-hint {
-  font-size: 13px;
+  font-size: var(--pf-type-body-s);
   color: var(--pf-text-subtle);
 }
 
 .field-error {
-  font-size: 13px;
+  font-size: var(--pf-type-body-s);
   color: var(--pf-error);
   font-weight: 500;
 }
@@ -1396,6 +1405,11 @@ textarea:focus-visible {
   justify-content: center;
   font-size: clamp(1.6rem, 4vw, 2.2rem);
   background: rgba(56, 189, 248, 0.12);
+}
+
+.feature-card__lottie {
+  width: clamp(44px, 5.5vw, 60px);
+  height: clamp(44px, 5.5vw, 60px);
 }
 
 .feature-card__icon-ring--highlight {
