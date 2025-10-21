@@ -71,12 +71,16 @@ function computeStats(entries: PreviewEntry[]): PreviewStats {
   }, { total: 0, ready: 0, errors: 0, pending: 0, totalPoints: 0 })
 }
 
-function getStatusTone(entry: PreviewEntry) {
-  if (!entry.task) return 'error'
+function getStatusLabel(entry: PreviewEntry) {
+  if (!entry.task) return { label: 'Unable to preview', tone: 'error' as const }
   const status = entry.task.status?.toLowerCase() ?? 'unknown'
-  if (status === 'ready' || status === 'success' || status === 'completed') return 'primary'
-  if (status === 'error' || status === 'failed' || status === 'cancelled') return 'error'
-  return 'secondary'
+  if (status === 'ready' || status === 'success' || status === 'completed') {
+    return { label: 'Ready for download', tone: 'primary' as const }
+  }
+  if (status === 'error' || status === 'failed' || status === 'cancelled') {
+    return { label: entry.error ?? 'Unable to process asset', tone: 'error' as const }
+  }
+  return { label: 'Processing preview…', tone: 'secondary' as const }
 }
 
 function formatCost(task: StockOrderTask | undefined) {
@@ -586,8 +590,14 @@ export default function StockOrderPageV2() {
                     }
 
                     const task = entry.task
-                    const statusTone = getStatusTone(entry)
+                    const statusInfo = getStatusLabel(entry)
+                    const statusTone = statusInfo.tone
+                    const statusLabel = statusInfo.label
                     const isSelected = selectedTaskIds.has(task.taskId)
+                    const thumbnail = task.thumbnailUrl ?? task.previewUrl ?? undefined
+                    const title = task.title ?? task.assetId ?? task.sourceUrl
+                    const assetId = task.assetId ?? task.externalTaskId ?? null
+                    const createdLabel = new Date(task.createdAt).toLocaleString()
 
                     return (
                       <article
@@ -596,17 +606,43 @@ export default function StockOrderPageV2() {
                           isSelected ? ' order-v2__result--selected' : ''
                         }`}
                       >
+                        <div className="order-v2__result-media" aria-hidden="true">
+                          {thumbnail ? (
+                            <img src={thumbnail} alt="" loading="lazy" />
+                          ) : (
+                            <div className="order-v2__result-placeholder">
+                              <span>{(task.site ?? 'U')[0]?.toUpperCase()}</span>
+                            </div>
+                          )}
+                        </div>
+
                         <div className="order-v2__result-main">
                           <div className="order-v2__result-head">
-                            <span className="order-v2__result-site">{task.site ?? 'Unknown provider'}</span>
-                            <span className="order-v2__result-cost">{formatCost(task)}</span>
+                            <div className="order-v2__result-heading">
+                              <span className="order-v2__result-title">{title}</span>
+                              <span className="order-v2__result-site">{task.site ?? 'Unknown provider'}</span>
+                            </div>
+                            <span className={`order-v2__result-status order-v2__result-status--${statusTone}`}>
+                              {statusLabel}
+                            </span>
                           </div>
-                          <p className="order-v2__result-url">{task.sourceUrl}</p>
-                          <p className="order-v2__result-meta">
-                            Created: {new Date(task.createdAt).toLocaleString()}
-                          </p>
-                          {entry.error ? <p className="order-v2__result-message">{entry.error}</p> : null}
+
+                          <span className="order-v2__result-url">{task.sourceUrl}</span>
+
+                          <div className="order-v2__result-meta">
+                            {assetId ? <span>ID: {assetId}</span> : null}
+                            <span>Cost: {formatCost(task)}</span>
+                            <span>Created: {createdLabel}</span>
+                          </div>
+
+                          {task.latestMessage ? (
+                            <p className="order-v2__result-message order-v2__result-message--info">{task.latestMessage}</p>
+                          ) : null}
+                          {entry.error ? (
+                            <p className="order-v2__result-message order-v2__result-message--error">{entry.error}</p>
+                          ) : null}
                         </div>
+
                         <div className="order-v2__result-actions">
                           <label className="order-v2__checkbox">
                             <input
