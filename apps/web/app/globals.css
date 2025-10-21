@@ -207,6 +207,17 @@
   gap: 12px;
 }
 
+.order-summary__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.order-summary__stats strong {
+  line-height: 1;
+}
+
 .order-summary__label {
   opacity: 0.7;
 }
