@@ -18,6 +18,9 @@
     "postinstall": "npm --prefix packages/database run generate && npm --prefix packages/database run build"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/morgan": "^1.9.10",
     "eslint": "^8.57.0",
     "prettier": "^3.3.3",
     "turbo": "^2.0.6",
