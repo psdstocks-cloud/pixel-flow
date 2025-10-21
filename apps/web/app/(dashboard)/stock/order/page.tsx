@@ -278,9 +278,22 @@ export default function StockOrderPage() {
       return
     }
 
-    const items = links
-      .map((link) => link.trim())
-      .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index)
+    const uniqueItems = new Map<string, { url: string; site?: string; id?: string }>()
+
+    links.forEach((link, index) => {
+      const trimmed = link.trim()
+      if (!trimmed) return
+      if (!uniqueItems.has(trimmed)) {
+        const detection = detectionHints[index]
+        uniqueItems.set(trimmed, {
+          url: trimmed,
+          site: detection?.site ?? undefined,
+          id: detection?.id ?? undefined,
+        })
+      }
+    })
+
+    const items = Array.from(uniqueItems.values())
 
     if (items.length === 0) {
       setPreviewFeedback({ type: 'error', message: 'Add at least one asset URL before previewing.' })
@@ -298,7 +311,7 @@ export default function StockOrderPage() {
     const payload: PreviewOrderPayload = {
       userId,
       responsetype: responseType,
-      items: items.map((url) => ({ url })),
+      items,
     }
 
     previewMutation.mutate(payload)
