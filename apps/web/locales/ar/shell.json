@@ -6,5 +6,28 @@
       "ar": "العربية"
     },
     "loading": "جارٍ تحديث اللغة..."
+  },
+  "navigation": {
+    "ariaLabel": "التنقل الرئيسي",
+    "brandAlt": "العودة إلى الصفحة الرئيسية",
+    "links": [
+      { "href": "#features", "label": "المميزات" },
+      { "href": "#how-it-works", "label": "كيفية العمل" },
+      { "href": "#pricing", "label": "الأسعار" },
+      { "href": "#testimonials", "label": "آراء العملاء" },
+      { "href": "#faq", "label": "الأسئلة الشائعة" }
+    ],
+    "ctaPrimary": { "href": "/signup", "label": "سجّل الآن" },
+    "ctaSecondary": { "href": "#pricing", "label": "الأسعار" },
+    "toggleLabel": "إظهار/إخفاء القائمة",
+    "menuLabel": "القائمة",
+    "closeLabel": "إغلاق القائمة",
+    "signOut": "تسجيل الخروج",
+    "authLinks": [
+      { "href": "/stock/order", "label": "لوحة التحكم" },
+      { "href": "/downloads", "label": "التنزيلات" },
+      { "href": "/billing", "label": "الفوترة" },
+      { "href": "/account", "label": "الحساب" }
+    ]
   }
 }

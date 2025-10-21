@@ -1,9 +1,8 @@
-import Link from 'next/link'
 import './globals.css'
 import { AppProviders } from './providers'
 import { getRequestLocale, getLocaleDirection } from '../lib/i18n/request'
-import { LanguageSwitcher } from '../components/LanguageSwitcher'
 import { loadShellMessages } from '../lib/i18n/shell'
+import { LandingHeader } from '../components/LandingHeader'
 
 export const metadata = {
   title: 'Pixel Flow',
@@ -19,12 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale} dir={dir}>
       <body>
         <AppProviders locale={locale}>
-          <header className="app-header">
-            <Link href="/" className="brand">
-              Pixel Flow
-            </Link>
-            <LanguageSwitcher currentLocale={locale} labels={shellMessages.languageSwitcher} />
-          </header>
+          <LandingHeader locale={locale} labels={shellMessages.navigation} languageSwitcher={shellMessages.languageSwitcher} />
           {children}
         </AppProviders>
       </body>

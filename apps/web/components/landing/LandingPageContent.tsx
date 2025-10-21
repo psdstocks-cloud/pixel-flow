@@ -41,7 +41,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
 
   return (
     <div className="landing-page">
-      <section className="landing-hero">
+      <section className="landing-hero" id="hero">
         <div className="landing-hero__copy">
           {hero.badge ? <span className="landing-hero__badge">{hero.badge}</span> : null}
           <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: landingTheme.motion.duration }}>
@@ -98,7 +98,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         ) : null}
       </section>
 
-      <section className="landing-hero-grid">
+      <section className="landing-hero-grid" id="overview">
         {heroGrid.items.map((item) => (
           <motion.article key={item.title} className="landing-hero-grid__item" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: landingTheme.motion.duration }}>
             <h3>{item.title}</h3>
@@ -107,7 +107,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         ))}
       </section>
 
-      <section className="landing-problem-solution">
+      <section className="landing-problem-solution" id="problems">
         <LandingSectionHeader title={problemSolution.headline} align="center" />
         <div className="landing-problem-solution__track" dir={direction}>
           {problemSolution.items.map((item, index) => (
@@ -120,7 +120,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         </div>
       </section>
 
-      <section className="landing-features">
+      <section className="landing-features" id="features">
         <LandingSectionHeader title={features.headline} align="center" />
         <div className="landing-features__tabs" role="tablist">
           {featureTabs.map((tab) => (
@@ -151,7 +151,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         </div>
       </section>
 
-      <section className="landing-how-it-works">
+      <section className="landing-how-it-works" id="how-it-works">
         <LandingSectionHeader title={howItWorks.headline} align="center" />
         <div className="landing-how-it-works__body">
           <ol className="landing-how-it-works__timeline">
@@ -184,7 +184,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         </Link>
       </section>
 
-      <section className="landing-pricing">
+      <section className="landing-pricing" id="pricing">
         <LandingSectionHeader title={pricingPreview.headline} subtitle={pricingPreview.subheadline} align="center" />
         <div className="landing-pricing__grid">
           {pricingPreview.packages.map((pkg) => (
@@ -208,12 +208,12 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
         </Link>
       </section>
 
-      <section className="landing-testimonials">
+      <section className="landing-testimonials" id="testimonials">
         <LandingSectionHeader title={socialProof.headline} align="center" />
         <TestimonialCarousel testimonials={socialProof.testimonials} />
       </section>
 
-      <section className="landing-faq">
+      <section className="landing-faq" id="faq">
         <LandingSectionHeader title={faqPreview.headline} align="center" />
         <FaqAccordion items={faqPreview.items} />
         <Link href="/faq" className="landing-faq__link">
