@@ -3,7 +3,15 @@
 import { FormEvent, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Card, Field, StatusBadge, Toast, useNotifications } from '../../../../components'
+import {
+  Card,
+  Field,
+  StatusBadge,
+  Toast,
+  useNotifications,
+  PreviewTaskCard,
+  OrderSummaryPanel,
+} from '../../../../components'
 import {
   buildDownloadUrl,
   commitOrder,
@@ -28,6 +36,14 @@ const DEFAULT_RESPONSE_TYPE: ResponseType = 'any'
 
 type PreviewEntry = PreviewOrderResponse['results'][number]
 type Feedback = { type: 'success' | 'error'; message: string }
+
+function getPreviewVariant(status: string | undefined) {
+  const normalized = status?.toLowerCase() ?? 'unknown'
+  if (['ready', 'success', 'completed'].includes(normalized)) return 'primary'
+  if (['error', 'failed', 'cancelled'].includes(normalized)) return 'error'
+  if (['pending', 'processing', 'detecting'].includes(normalized)) return 'disabled'
+  return 'secondary'
+}
 
 const RESPONSE_OPTIONS: Array<{ value: ResponseType; label: string }> = [
   { value: 'any', label: 'Any (auto)' },
@@ -492,64 +508,58 @@ export default function StockOrderPage() {
                 Previewed links will appear here with cost, provider, and status information.
               </p>
             ) : (
-              <div className="preview-results" style={{ display: 'grid', gap: 16 }}>
-                {previewEntries.map((entry, index) => {
-                  if (!entry.task) {
-                    return (
-                      <Toast
-                        key={`preview-error-${index}`}
-                        title="Preview failed"
-                        message={entry.error ?? 'Unknown error while preparing this asset.'}
-                        variant="error"
-                      />
-                    )
-                  }
+              <div className="preview-panel">
+                <div className="preview-results order-preview-grid">
+                  {previewEntries.map((entry, index) => {
+                    if (!entry.task) {
+                      return (
+                        <Toast
+                          key={`preview-error-${index}`}
+                          title="Preview failed"
+                          message={entry.error ?? 'Unknown error while preparing this asset.'}
+                          variant="error"
+                        />
+                      )
+                    }
 
                   const task = entry.task
                   const isSelected = selectedTaskIds.has(task.taskId)
                   const createdAtLabel = dateTimeFormatter.format(new Date(task.createdAt))
+                  const variant = getPreviewVariant(task.status)
 
-                  return (
-                    <div key={task.taskId} className="bulk-result-card" style={{ display: 'grid', gap: 12 }}>
-                      <div className="bulk-result-header" style={{ alignItems: 'flex-start', gap: 12 }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleTaskSelection(task.taskId)}
-                          aria-label={`Select task ${task.taskId}`}
-                        />
-                        <div style={{ flex: 1, display: 'grid', gap: 4 }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <StatusBadge status={task.status} />
-                            <strong>{task.title ?? task.sourceUrl}</strong>
-                          </div>
-                          <span className="status-meta">Created: {createdAtLabel}</span>
-                          <span className="status-meta">Cost: {formatCost(task)}</span>
-                          {task.latestMessage ? <span className="status-meta">{task.latestMessage}</span> : null}
-                          {entry.error ? <span style={{ color: 'var(--pf-error)', fontSize: 13 }}>{entry.error}</span> : null}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => handleCommitSingle(task.taskId)}
-                            disabled={!isSelected || commitMutation.isPending}
-                          >
-                            Queue now
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => removePreviewTask(task.taskId)}
-                            disabled={commitMutation.isPending}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                    return (
+                      <PreviewTaskCard
+                        key={task.taskId}
+                        task={task}
+                        costLabel={formatCost(task)}
+                        createdAtLabel={createdAtLabel}
+                        error={entry.error}
+                        isSelected={isSelected}
+                        onToggle={() => toggleTaskSelection(task.taskId)}
+                        onQueue={() => handleCommitSingle(task.taskId)}
+                        onRemove={() => removePreviewTask(task.taskId)}
+                        selectionDisabled={commitMutation.isPending}
+                        queueDisabled={commitMutation.isPending}
+                        removeDisabled={commitMutation.isPending}
+                        variant={variant}
+                      />
+                    )
+                  })}
+                </div>
+
+                <OrderSummaryPanel
+                  selectedCount={selectedTaskIds.size}
+                  totalTasks={previewEntries.filter((entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task)).length}
+                  totalSelectedPoints={totalSelectedPoints}
+                  availablePoints={balanceQuery.data?.points ?? 0}
+                  remainingPoints={Math.max((balanceQuery.data?.points ?? 0) - totalSelectedPoints, 0)}
+                  isConfirming={commitMutation.isPending}
+                  hasInsufficientPoints={Boolean(balanceQuery.data && totalSelectedPoints > (balanceQuery.data?.points ?? 0))}
+                  onConfirm={handleConfirmSelected}
+                  onClearSelection={() => setSelectedTaskIds(new Set())}
+                  disableConfirm={selectedTaskIds.size === 0 || commitMutation.isPending}
+                  disableClear={selectedTaskIds.size === 0 || commitMutation.isPending}
+                />
               </div>
             )}
 
