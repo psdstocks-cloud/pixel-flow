@@ -124,6 +124,16 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.order-preview-section {
+  display: grid;
+  gap: 20px;
+}
+
+.preview-column {
+  display: grid;
+  gap: 20px;
+}
+
 .order-preview-layout {
   display: grid;
   gap: 20px;
@@ -242,6 +252,11 @@
 @media (min-width: 1024px) {
   .preview-panel {
     grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .order-preview-section {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
   }
 
   .order-preview-layout {

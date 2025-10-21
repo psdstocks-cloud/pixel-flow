@@ -506,8 +506,9 @@ export default function StockOrderPage() {
           </>
         </Card>
 
-        <div className="order-preview-layout">
+        <div className="order-preview-section">
           <Card
+            className="order-preview-card"
             title="Preview results"
             description="Select the assets you’d like to confirm. Points are only deducted on confirmation."
             headerSlot={
