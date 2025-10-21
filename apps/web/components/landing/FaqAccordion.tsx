@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, Minus } from 'lucide-react'
 import { landingTheme } from '../../styles/landingTheme'
 
 export interface FaqItem {
@@ -44,8 +45,10 @@ export function FaqAccordion({ items, onItemToggle }: FaqAccordionProps) {
         return (
           <div key={item.question} className={clsx('faq-accordion__item', { 'faq-accordion__item--open': isOpen })}>
             <button type="button" className="faq-accordion__trigger" aria-expanded={isOpen} onClick={() => toggleItem(index)}>
-              <span>{item.question}</span>
-              <span aria-hidden>{isOpen ? '−' : '+'}</span>
+              <span className="type-heading-s">{item.question}</span>
+              <span aria-hidden className="faq-accordion__icon">
+                {isOpen ? <Minus size={18} /> : <Plus size={18} />}
+              </span>
             </button>
             <AnimatePresence initial={false}>
               {isOpen ? (
@@ -57,7 +60,7 @@ export function FaqAccordion({ items, onItemToggle }: FaqAccordionProps) {
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: landingTheme.motion.duration, ease: landingTheme.motion.easeOut }}
                 >
-                  <p>{item.answer}</p>
+                  <p className="type-body-m">{item.answer}</p>
                 </motion.div>
               ) : null}
             </AnimatePresence>

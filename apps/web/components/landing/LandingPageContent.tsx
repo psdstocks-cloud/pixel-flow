@@ -3,6 +3,15 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import {
+  Sparkles,
+  Layers,
+  Workflow,
+  Gem,
+  MessageCircleQuestion,
+  Star,
+  Sparkle,
+} from 'lucide-react'
 import type { HomeMessages } from '../../lib/i18n/home'
 import { landingTheme } from '../../styles/landingTheme'
 import { LandingSectionHeader } from './SectionHeader'
@@ -10,6 +19,7 @@ import { FeatureCard } from './FeatureCard'
 import { PricingCard } from './PricingCard'
 import { TestimonialCarousel } from './TestimonialCarousel'
 import { FaqAccordion } from './FaqAccordion'
+import { IconBadge } from './IconBadge'
 
 interface LandingPageContentProps {
   messages: HomeMessages
@@ -43,11 +53,23 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
     <div className="landing-page">
       <section className="landing-hero" id="hero">
         <div className="landing-hero__copy">
-          {hero.badge ? <span className="landing-hero__badge">{hero.badge}</span> : null}
-          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: landingTheme.motion.duration }}>
+          {hero.badge ? (
+            <IconBadge icon={<Sparkles size={14} />} label={hero.badge} size="sm" />
+          ) : null}
+          <motion.h1
+            className="type-display-l text-gradient-primary"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: landingTheme.motion.duration }}
+          >
             {hero.headline}
           </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: landingTheme.motion.duration, delay: 0.08 }}>
+          <motion.p
+            className="type-body-l"
+            initial={{ opacity: 0, y: 32 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: landingTheme.motion.duration, delay: 0.08 }}
+          >
             {hero.subheadline}
           </motion.p>
           <motion.div
@@ -56,7 +78,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: landingTheme.motion.duration, delay: 0.16 }}
           >
-            <Link href="/signup" className="landing-hero__cta landing-hero__cta--primary">
+            <Link href="/signup" className="landing-hero__cta landing-hero__cta--primary button--accent">
               {hero.primaryCta.label}
               {hero.primaryCta.note ? <span>{hero.primaryCta.note}</span> : null}
             </Link>
@@ -108,7 +130,12 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
       </section>
 
       <section className="landing-problem-solution" id="problems">
-        <LandingSectionHeader title={problemSolution.headline} align="center" />
+        <LandingSectionHeader
+          title={problemSolution.headline}
+          align="center"
+          size="display-m"
+          icon={<Layers size={18} />}
+        />
         <div className="landing-problem-solution__track" dir={direction}>
           {problemSolution.items.map((item, index) => (
             <motion.div key={item.problem} className="landing-problem-solution__card" initial={{ opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: landingTheme.motion.duration, delay: index * 0.06 }}>
@@ -121,7 +148,12 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
       </section>
 
       <section className="landing-features" id="features">
-        <LandingSectionHeader title={features.headline} align="center" />
+        <LandingSectionHeader
+          title={features.headline}
+          align="center"
+          size="display-m"
+          icon={<Sparkle size={18} />}
+        />
         <div className="landing-features__tabs" role="tablist">
           {featureTabs.map((tab) => (
             <button
@@ -137,7 +169,7 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
           ))}
         </div>
         <div className="landing-features__grid">
-          {filteredFeatures.map((feature) => (
+          {filteredFeatures.map((feature, index) => (
             <FeatureCard
               key={feature.id}
               id={feature.id}
@@ -146,13 +178,19 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
               pricing={feature.pricing}
               ctaLabel={feature.cta}
               illustrationSlot={feature.icon ? <span className="landing-features__emoji" aria-hidden>{feature.icon}</span> : undefined}
+              variant={index === 0 ? 'primary' : 'secondary'}
             />
           ))}
         </div>
       </section>
 
       <section className="landing-how-it-works" id="how-it-works">
-        <LandingSectionHeader title={howItWorks.headline} align="center" />
+        <LandingSectionHeader
+          title={howItWorks.headline}
+          align="center"
+          size="display-m"
+          icon={<Workflow size={18} />}
+        />
         <div className="landing-how-it-works__body">
           <ol className="landing-how-it-works__timeline">
             {howItWorks.steps.map((step) => (
@@ -185,7 +223,13 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
       </section>
 
       <section className="landing-pricing" id="pricing">
-        <LandingSectionHeader title={pricingPreview.headline} subtitle={pricingPreview.subheadline} align="center" />
+        <LandingSectionHeader
+          title={pricingPreview.headline}
+          subtitle={pricingPreview.subheadline}
+          align="center"
+          size="display-m"
+          icon={<Gem size={18} />}
+        />
         <div className="landing-pricing__grid">
           {pricingPreview.packages.map((pkg) => (
             <PricingCard
@@ -209,12 +253,22 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
       </section>
 
       <section className="landing-testimonials" id="testimonials">
-        <LandingSectionHeader title={socialProof.headline} align="center" />
+        <LandingSectionHeader
+          title={socialProof.headline}
+          align="center"
+          size="display-m"
+          icon={<Star size={18} />}
+        />
         <TestimonialCarousel testimonials={socialProof.testimonials} />
       </section>
 
       <section className="landing-faq" id="faq">
-        <LandingSectionHeader title={faqPreview.headline} align="center" />
+        <LandingSectionHeader
+          title={faqPreview.headline}
+          align="center"
+          size="display-m"
+          icon={<MessageCircleQuestion size={18} />}
+        />
         <FaqAccordion items={faqPreview.items} />
         <Link href="/faq" className="landing-faq__link">
           {faqPreview.linkText}
@@ -223,9 +277,10 @@ export function LandingPageContent({ messages, direction }: LandingPageContentPr
 
       <section className="landing-final-cta">
         <div className="landing-final-cta__content">
-          <h2>{finalCta.headline}</h2>
-          <p>{finalCta.subheadline}</p>
-          <Link href="/signup" className="landing-final-cta__button">
+          {hero.badge ? <IconBadge icon={<Sparkles size={16} />} tone="highlight" label={hero.badge} /> : null}
+          <h2 className="type-heading-xl">{finalCta.headline}</h2>
+          <p className="type-body-l">{finalCta.subheadline}</p>
+          <Link href="/signup" className="landing-final-cta__button button--accent">
             {finalCta.cta.label}
           </Link>
           {finalCta.trustBadges?.length ? (

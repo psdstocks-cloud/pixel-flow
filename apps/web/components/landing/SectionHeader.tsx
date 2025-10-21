@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
 import { landingTheme } from '../../styles/landingTheme'
+import { IconBadge } from './IconBadge'
 
 interface LandingSectionHeaderProps {
   eyebrow?: string
@@ -12,9 +13,29 @@ interface LandingSectionHeaderProps {
   align?: 'start' | 'center'
   actionSlot?: ReactNode
   invert?: boolean
+  icon?: ReactNode
+  size?: 'display-xl' | 'display-l' | 'display-m' | 'heading-xl' | 'heading-l' | 'heading-m'
 }
 
-export function LandingSectionHeader({ eyebrow, title, subtitle, align = 'start', actionSlot, invert = false }: LandingSectionHeaderProps) {
+export function LandingSectionHeader({
+  eyebrow,
+  title,
+  subtitle,
+  align = 'start',
+  actionSlot,
+  invert = false,
+  icon,
+  size = 'heading-xl',
+}: LandingSectionHeaderProps) {
+  const headingClass = clsx('landing-section-header__title', {
+    'type-display-xl': size === 'display-xl',
+    'type-display-l': size === 'display-l',
+    'type-display-m': size === 'display-m',
+    'type-heading-xl': size === 'heading-xl',
+    'type-heading-l': size === 'heading-l',
+    'type-heading-m': size === 'heading-m',
+  })
+
   return (
     <motion.header
       initial={{ opacity: 0, y: 24 }}
@@ -27,9 +48,10 @@ export function LandingSectionHeader({ eyebrow, title, subtitle, align = 'start'
       })}
     >
       <div className="landing-section-header__copy">
-        {eyebrow ? <p className="landing-section-header__eyebrow">{eyebrow}</p> : null}
-        {title ? <h2 className="landing-section-header__title">{title}</h2> : null}
-        {subtitle ? <p className="landing-section-header__subtitle">{subtitle}</p> : null}
+        {icon ? <IconBadge icon={icon} tone={invert ? 'highlight' : 'primary'} /> : null}
+        {eyebrow ? <p className="landing-section-header__eyebrow type-eyebrow">{eyebrow}</p> : null}
+        {title ? <h2 className={headingClass}>{title}</h2> : null}
+        {subtitle ? <p className="landing-section-header__subtitle type-body-l">{subtitle}</p> : null}
       </div>
       {actionSlot ? <div className="landing-section-header__actions">{actionSlot}</div> : null}
     </motion.header>

@@ -22,6 +22,7 @@ export const landingTheme = {
     sectionAlt: 'linear-gradient(135deg, rgba(236, 72, 153, 0.08), rgba(168, 85, 247, 0.08))',
     card: 'linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.65))',
     accent: 'linear-gradient(135deg, rgba(56, 189, 248, 1), rgba(168, 85, 247, 1))',
+    accentHighlight: 'linear-gradient(135deg, rgba(236, 72, 153, 0.9), rgba(168, 85, 247, 0.85))',
     glow: 'radial-gradient(circle at top center, rgba(56, 189, 248, 0.35), rgba(15, 23, 42, 0))'
   },
   radii: {
@@ -42,11 +43,25 @@ export const landingTheme = {
     hero: '96px'
   },
   typography: {
+    display: {
+      xl: 'clamp(3.2rem, 5vw, 4.8rem)',
+      l: 'clamp(2.8rem, 4.2vw, 3.6rem)',
+      m: 'clamp(2.4rem, 3.2vw, 3rem)'
+    },
+    heading: {
+      xl: 'clamp(2.2rem, 2.8vw, 2.8rem)',
+      l: 'clamp(1.9rem, 2.4vw, 2.4rem)',
+      m: 'clamp(1.6rem, 2vw, 2rem)',
+      s: 'clamp(1.35rem, 1.6vw, 1.6rem)'
+    },
+    body: {
+      l: 'clamp(1.15rem, 1.5vw, 1.25rem)',
+      m: '1rem',
+      s: '0.92rem'
+    },
     eyebrow: '0.8rem',
-    heading: 'clamp(1.8rem, 2vw, 2.4rem)',
-    hero: 'clamp(2.6rem, 4vw, 3.6rem)',
     subtitle: 'clamp(1.05rem, 1.4vw, 1.2rem)',
-    body: '1rem',
+    hero: 'clamp(2.6rem, 4vw, 3.6rem)',
     small: '0.9rem'
   },
   motion: {
