@@ -1084,6 +1084,11 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: clamp(16px, 3vw, 28px);
+  align-items: flex-start;
+}
+
+.landing-hero__copy .icon-badge {
+  align-self: flex-start;
 }
 
 .landing-hero__badge {
@@ -1240,6 +1245,19 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 12px;
   max-width: clamp(480px, 60vw, 680px);
+  align-items: flex-start;
+}
+
+.landing-section-header--center .landing-section-header__copy {
+  align-items: center;
+}
+
+.landing-section-header__copy .icon-badge {
+  align-self: flex-start;
+}
+
+.landing-section-header--center .landing-section-header__copy .icon-badge {
+  align-self: center;
 }
 
 .landing-section-header__eyebrow {
