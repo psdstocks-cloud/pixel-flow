@@ -404,7 +404,7 @@ export default function StockOrderPage() {
         />
       ) : null}
 
-      <div className="tab-panel split">
+      <div className="tab-panel split order-preview-wrapper">
         <Card
           title="Prepare your batch"
           description="Add up to five asset URLs. We’ll preview costs before you spend any points."
@@ -506,22 +506,22 @@ export default function StockOrderPage() {
           </>
         </Card>
 
-        <Card
-          title="Preview results"
-          description="Select the assets you’d like to confirm. Points are only deducted on confirmation."
-          headerSlot={
-            selectedPreviewTasks.length > 0 ? (
-              <span className="glass-chip">Selected cost: {totalSelectedPoints} pts</span>
-            ) : null
-          }
-        >
-          <>
-            {previewEntries.length === 0 ? (
-              <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
-                Previewed links will appear here with cost, provider, and status information.
-              </p>
-            ) : (
-              <div className="preview-panel">
+        <div className="order-preview-layout">
+          <Card
+            title="Preview results"
+            description="Select the assets you’d like to confirm. Points are only deducted on confirmation."
+            headerSlot={
+              selectedPreviewTasks.length > 0 ? (
+                <span className="glass-chip">Selected cost: {totalSelectedPoints} pts</span>
+              ) : null
+            }
+          >
+            <>
+              {previewEntries.length === 0 ? (
+                <p style={{ color: 'var(--pf-text-subtle)', margin: 0 }}>
+                  Previewed links will appear here with cost, provider, and status information.
+                </p>
+              ) : (
                 <div className="preview-results order-preview-grid">
                   {previewEntries.map((entry, index) => {
                     if (!entry.task) {
@@ -535,10 +535,10 @@ export default function StockOrderPage() {
                       )
                     }
 
-                  const task = entry.task
-                  const isSelected = selectedTaskIds.has(task.taskId)
-                  const createdAtLabel = dateTimeFormatter.format(new Date(task.createdAt))
-                  const variant = getPreviewVariant(task.status)
+                    const task = entry.task
+                    const isSelected = selectedTaskIds.has(task.taskId)
+                    const createdAtLabel = dateTimeFormatter.format(new Date(task.createdAt))
+                    const variant = getPreviewVariant(task.status)
 
                     return (
                       <PreviewTaskCard
@@ -546,7 +546,6 @@ export default function StockOrderPage() {
                         task={task}
                         costLabel={formatCost(task)}
                         createdAtLabel={createdAtLabel}
-                        error={entry.error}
                         isSelected={isSelected}
                         onToggle={() => toggleTaskSelection(task.taskId)}
                         onQueue={() => handleCommitSingle(task.taskId)}
@@ -559,48 +558,48 @@ export default function StockOrderPage() {
                     )
                   })}
                 </div>
+              )}
 
-                <OrderSummaryPanel
-                  selectedCount={selectedTaskIds.size}
-                  totalTasks={previewEntries.filter((entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task)).length}
-                  totalSelectedPoints={totalSelectedPoints}
-                  availablePoints={balanceQuery.data?.points ?? 0}
-                  remainingPoints={Math.max((balanceQuery.data?.points ?? 0) - totalSelectedPoints, 0)}
-                  isConfirming={commitMutation.isPending}
-                  hasInsufficientPoints={Boolean(balanceQuery.data && totalSelectedPoints > (balanceQuery.data?.points ?? 0))}
-                  onConfirm={handleConfirmSelected}
-                  onClearSelection={() => setSelectedTaskIds(new Set())}
-                  disableConfirm={selectedTaskIds.size === 0 || commitMutation.isPending}
-                  disableClear={selectedTaskIds.size === 0 || commitMutation.isPending}
+              {previewEntries.some((entry) => entry.task) ? (
+                <div className="form-actions" style={{ marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={handleConfirmSelected}
+                    disabled={selectedTaskIds.size === 0 || commitMutation.isPending}
+                  >
+                    <span className="button-content">
+                      {commitMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
+                      {commitMutation.isPending ? 'Confirming…' : 'Confirm selected orders'}
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+
+              {commitFeedback ? (
+                <Toast
+                  title={commitFeedback.type === 'success' ? 'Orders queued' : 'Could not queue all orders'}
+                  message={commitFeedback.message}
+                  variant={commitFeedback.type === 'success' ? 'success' : 'error'}
                 />
-              </div>
-            )}
+              ) : null}
+            </>
+          </Card>
 
-            {previewEntries.some((entry) => entry.task) ? (
-              <div className="form-actions" style={{ marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={handleConfirmSelected}
-                  disabled={selectedTaskIds.size === 0 || commitMutation.isPending}
-                >
-                  <span className="button-content">
-                    {commitMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
-                    {commitMutation.isPending ? 'Confirming…' : 'Confirm selected orders'}
-                  </span>
-                </button>
-              </div>
-            ) : null}
-
-            {commitFeedback ? (
-              <Toast
-                title={commitFeedback.type === 'success' ? 'Orders queued' : 'Could not queue all orders'}
-                message={commitFeedback.message}
-                variant={commitFeedback.type === 'success' ? 'success' : 'error'}
-              />
-            ) : null}
-          </>
-        </Card>
+          <OrderSummaryPanel
+            selectedCount={selectedTaskIds.size}
+            totalTasks={previewEntries.filter((entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task)).length}
+            totalSelectedPoints={totalSelectedPoints}
+            availablePoints={balanceQuery.data?.points ?? 0}
+            remainingPoints={Math.max((balanceQuery.data?.points ?? 0) - totalSelectedPoints, 0)}
+            isConfirming={commitMutation.isPending}
+            hasInsufficientPoints={Boolean(balanceQuery.data && totalSelectedPoints > (balanceQuery.data?.points ?? 0))}
+            onConfirm={handleConfirmSelected}
+            onClearSelection={() => setSelectedTaskIds(new Set())}
+            disableConfirm={selectedTaskIds.size === 0 || commitMutation.isPending}
+            disableClear={selectedTaskIds.size === 0 || commitMutation.isPending}
+          />
+        </div>
       </div>
 
       <div className="tab-panel split">
