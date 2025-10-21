@@ -250,10 +250,19 @@ export async function fetchStockInfo(request: StockInfoRequest, signal?: AbortSi
   return data.info;
 }
 
-export async function fetchBalance(userId: string, signal?: AbortSignal): Promise<BalanceSummary> {
+export async function fetchBalance(
+  userId: string,
+  accessToken?: string,
+  signal?: AbortSignal,
+): Promise<BalanceSummary> {
+  const headers = {
+    ...(withUserId(userId) ?? {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+
   return apiFetch<BalanceSummary>(`/stock/balance/${encodeURIComponent(userId)}`, {
     signal,
-    headers: withUserId(userId),
+    headers,
   });
 }
 

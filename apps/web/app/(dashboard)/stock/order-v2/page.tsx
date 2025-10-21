@@ -134,11 +134,13 @@ export default function StockOrderPageV2() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const accessToken = session?.accessToken
+
   const balanceQuery = useQuery({
     queryKey: userId ? queries.balance(userId) : ['stock', 'balance', 'anonymous'],
     queryFn: ({ signal }) => {
       if (!userId) throw new Error('Missing user context')
-      return fetchBalance(userId, signal)
+      return fetchBalance(userId, accessToken ?? undefined, signal)
     },
     enabled: isAuthenticated,
     staleTime: 15_000,
@@ -307,18 +309,17 @@ export default function StockOrderPageV2() {
       return
     }
 
-    const uniqueItems = new Map<string, { url: string; site?: string; id?: string }>()
+    const uniqueItems = new Map<string, { url: string }>()
 
     activeLinks.forEach((link, index) => {
       const trimmed = link.trim()
       if (!trimmed) return
       if (!uniqueItems.has(trimmed)) {
-        const detection = detectionHints[index]
-        uniqueItems.set(trimmed, {
-          url: trimmed,
-          site: detection?.site ?? undefined,
-          id: detection?.id ?? undefined,
-        })
+        const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+
+        if (isUrl) {
+          uniqueItems.set(trimmed, { url: trimmed })
+        }
       }
     })
 
@@ -764,7 +765,7 @@ export default function StockOrderPageV2() {
               ) : (
                 <p className="order-v2__empty">No providers configured.</p>
               )}
-              <Link href="/providers" className="order-v2__ghost" aria-disabled>
+              <Link href="/stock/providers" className="order-v2__ghost">
                 Show all sites
               </Link>
             </>

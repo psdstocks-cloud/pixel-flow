@@ -134,11 +134,13 @@ export default function StockOrderPage() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const accessToken = session?.accessToken
+
   const balanceQuery = useQuery({
     queryKey: userId ? queries.balance(userId) : ['stock', 'balance', 'anonymous'],
     queryFn: ({ signal }) => {
       if (!userId) throw new Error('Missing user context')
-      return fetchBalance(userId, signal)
+      return fetchBalance(userId, accessToken ?? undefined, signal)
     },
     enabled: isAuthenticated,
     staleTime: 15_000,
