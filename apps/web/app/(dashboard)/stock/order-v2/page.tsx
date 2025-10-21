@@ -1,6 +1,7 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -311,7 +312,7 @@ export default function StockOrderPageV2() {
 
     const uniqueItems = new Map<string, { url: string }>()
 
-    activeLinks.forEach((link, index) => {
+    activeLinks.forEach((link) => {
       const trimmed = link.trim()
       if (!trimmed) return
       if (!uniqueItems.has(trimmed)) {
@@ -609,7 +610,7 @@ export default function StockOrderPageV2() {
                       >
                         <div className="order-v2__result-media" aria-hidden="true">
                           {thumbnail ? (
-                            <img src={thumbnail} alt="" loading="lazy" />
+                            <Image src={thumbnail} alt="" fill className="order-v2__result-image" sizes="96px" />
                           ) : (
                             <div className="order-v2__result-placeholder">
                               <span>{(task.site ?? 'U')[0]?.toUpperCase()}</span>
