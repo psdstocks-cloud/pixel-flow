@@ -1,16 +1,16 @@
 'use client'
 
-import { FormEvent, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, Fragment, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Card,
   Field,
+  OrderSummaryPanel,
+  PreviewTaskCard,
   StatusBadge,
   Toast,
   useNotifications,
-  PreviewTaskCard,
-  OrderSummaryPanel,
 } from '../../../../components'
 import {
   buildDownloadUrl,
@@ -34,6 +34,8 @@ const MAX_LINKS = 5
 const HISTORY_LIMIT = 25
 const DEFAULT_RESPONSE_TYPE: ResponseType = 'any'
 
+type OrderMode = 'batch' | 'single'
+type OrderInputs = { batch: string; single: string }
 type PreviewEntry = PreviewOrderResponse['results'][number]
 type Feedback = { type: 'success' | 'error'; message: string }
 
@@ -90,7 +92,8 @@ export default function StockOrderPage() {
   const userId = session?.userId ?? null
   const isAuthenticated = Boolean(userId)
 
-  const [links, setLinks] = useState<string[]>([''])
+  const [orderMode, setOrderMode] = useState<OrderMode>('batch')
+  const [inputs, setInputs] = useState<OrderInputs>({ batch: '', single: '' })
   const [responseType, setResponseType] = useState<ResponseType>(DEFAULT_RESPONSE_TYPE)
   const [previewEntries, setPreviewEntries] = useState<PreviewEntry[]>([])
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
@@ -98,6 +101,32 @@ export default function StockOrderPage() {
   const [commitFeedback, setCommitFeedback] = useState<Feedback | null>(null)
 
   const pendingTaskIdsRef = useRef<string[]>([])
+
+  const isBatchMode = orderMode === 'batch'
+  const isSingleMode = orderMode === 'single'
+
+  const batchInput = inputs.batch
+  const singleInput = inputs.single
+
+  const batchLinks = useMemo<string[]>(() => {
+    return batchInput
+      .replace(/\r/g, '')
+      .split('\n')
+      .map((rawLine: string) => rawLine.trim())
+      .filter((trimmedLine: string) => trimmedLine.length > 0)
+      .slice(0, MAX_LINKS)
+  }, [batchInput])
+
+  const singleLink = useMemo(() => singleInput.trim(), [singleInput])
+
+  const activeLinks = useMemo<string[]>(() => {
+    if (isBatchMode) {
+      return batchLinks
+    }
+
+    return singleLink ? [singleLink] : []
+  }, [isBatchMode, batchLinks, singleLink])
+  const totalLinkCount = activeLinks.length
 
   const sitesQuery = useQuery({
     queryKey: queries.sites,
@@ -127,12 +156,8 @@ export default function StockOrderPage() {
 
   const detectionHints = useMemo(() => {
     const sites = (sitesQuery.data ?? []) as StockSite[]
-    return links.map((link) => {
-      const trimmed = link.trim()
-      if (!trimmed) return null
-      return detectSiteAndIdFromUrl(trimmed, sites)
-    })
-  }, [links, sitesQuery.data])
+    return activeLinks.map((link) => detectSiteAndIdFromUrl(link, sites))
+  }, [activeLinks, sitesQuery.data])
 
   const previewMutation = useMutation({
     mutationFn: (payload: PreviewOrderPayload) => previewOrder(payload),
@@ -186,7 +211,7 @@ export default function StockOrderPage() {
 
       setPreviewEntries((prev) =>
         prev
-          .map<PreviewEntry | null>((entry) => {
+          .map<PreviewEntry | null>((entry: PreviewEntry) => {
             if (!entry.task) return entry
             const { taskId } = entry.task
             if (!committedIds.has(taskId)) return entry
@@ -244,26 +269,51 @@ export default function StockOrderPage() {
     },
   })
 
-  const handleLinkChange = (index: number, value: string) => {
-    setLinks((prev) => {
-      const next = [...prev]
-      next[index] = value
-      return next
+  const clearPreviewState = () => {
+    setPreviewEntries([])
+    setSelectedTaskIds(new Set())
+    setPreviewFeedback(null)
+    setCommitFeedback(null)
+  }
+
+  const setBatchInput = (value: string | ((prev: string) => string)) => {
+    setInputs((prev: OrderInputs) => {
+      const next = typeof value === 'function' ? value(prev.batch) : value
+      return { ...prev, batch: next }
     })
   }
 
-  const handleAddLink = () => {
-    setLinks((prev) => {
-      if (prev.length >= MAX_LINKS) return prev
-      return [...prev, '']
+  const setSingleInput = (value: string | ((prev: string) => string)) => {
+    setInputs((prev: OrderInputs) => {
+      const next = typeof value === 'function' ? value(prev.single) : value
+      return { ...prev, single: next }
     })
   }
 
-  const handleRemoveLink = (index: number) => {
-    setLinks((prev) => {
-      if (prev.length === 1) return ['']
-      return prev.filter((_, idx) => idx !== index)
-    })
+  const handleModeChange = (nextMode: OrderMode) => {
+    if (nextMode === orderMode) return
+    setOrderMode(nextMode)
+
+    if (nextMode === 'single') {
+      setSingleInput(batchLinks[0] ?? singleLink)
+    } else {
+      setBatchInput((current) => {
+        if (current.trim().length > 0) return current
+        return singleLink.length > 0 ? singleLink : current
+      })
+    }
+
+    clearPreviewState()
+  }
+
+  const handleBatchInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const normalized = event.target.value.replace(/\r/g, '')
+    const limitedLines = normalized.split('\n').slice(0, MAX_LINKS)
+    setBatchInput(limitedLines.join('\n'))
+  }
+
+  const handleSingleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSingleInput(event.target.value.replace(/\r?\n/g, ''))
   }
 
   const handlePreviewSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -280,7 +330,7 @@ export default function StockOrderPage() {
 
     const uniqueItems = new Map<string, { url: string; site?: string; id?: string }>()
 
-    links.forEach((link, index) => {
+    activeLinks.forEach((link: string, index: number) => {
       const trimmed = link.trim()
       if (!trimmed) return
       if (!uniqueItems.has(trimmed)) {
@@ -318,7 +368,7 @@ export default function StockOrderPage() {
   }
 
   const toggleTaskSelection = (taskId: string) => {
-    setSelectedTaskIds((prev) => {
+    setSelectedTaskIds((prev: Set<string>) => {
       const next = new Set(prev)
       if (next.has(taskId)) {
         next.delete(taskId)
@@ -330,8 +380,8 @@ export default function StockOrderPage() {
   }
 
   const removePreviewTask = (taskId: string) => {
-    setPreviewEntries((prev) => prev.filter((entry) => entry.task?.taskId !== taskId))
-    setSelectedTaskIds((prev) => {
+    setPreviewEntries((prev: PreviewEntry[]) => prev.filter((entry: PreviewEntry) => entry.task?.taskId !== taskId))
+    setSelectedTaskIds((prev: Set<string>) => {
       const next = new Set(prev)
       next.delete(taskId)
       return next
@@ -356,24 +406,26 @@ export default function StockOrderPage() {
     commitOrders([taskId])
   }
 
-  const clearPreviewState = () => {
-    setPreviewEntries([])
-    setSelectedTaskIds(new Set())
-    setPreviewFeedback(null)
-    setCommitFeedback(null)
+  const handleClearForm = () => {
+    setInputs({ batch: '', single: '' })
+    clearPreviewState()
   }
 
   const selectedPreviewTasks = previewEntries.filter(
-    (entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task && selectedTaskIds.has(entry.task.taskId)),
+    (entry): entry is PreviewEntry & { task: StockOrderTask } =>
+      Boolean(entry.task && selectedTaskIds.has(entry.task.taskId)),
   )
 
-  const totalSelectedPoints = selectedPreviewTasks.reduce((sum, entry) => sum + (entry.task.costPoints ?? 0), 0)
+  const totalSelectedPoints = selectedPreviewTasks.reduce<number>(
+    (sum: number, entry: PreviewEntry & { task: StockOrderTask }) => sum + (entry.task.costPoints ?? 0),
+    0,
+  )
 
   const providerCount = sitesQuery.data?.length ?? 0
   const nextPaymentLabel = session?.nextPaymentDue
     ? dateTimeFormatter.format(new Date(session.nextPaymentDue))
     : 'Not scheduled'
-  const historyTasks = tasksQuery.data ?? []
+  const historyTasks: StockOrderTask[] = tasksQuery.data ?? []
 
   const showSignInWarning = sessionStatus === 'ready' && !isAuthenticated
 
@@ -406,86 +458,129 @@ export default function StockOrderPage() {
 
       <div className="tab-panel split order-preview-wrapper">
         <Card
-          title="Prepare your batch"
-          description="Add up to five asset URLs. We’ll preview costs before you spend any points."
+          title={isBatchMode ? 'Batch download mode' : 'Single download mode'}
+          description={
+            isBatchMode
+              ? 'Paste up to five asset URLs. We’ll preview costs before you spend any points.'
+              : 'Paste a single asset URL. Preview costs before you confirm the download.'
+          }
         >
           <>
-            <form className="form-grid" onSubmit={handlePreviewSubmit}>
-              {links.map((link, index) => {
-                const detection = detectionHints[index]
-                const hint = detection
-                  ? `Detected provider: ${detection.site ?? 'unknown'}${detection.id ? ` · asset ${detection.id}` : ''}`
-                  : 'Paste a direct asset URL. Provider detection runs automatically.'
-                return (
-                  <div key={`link-row-${index}`} className="link-input-row">
-                    <Field label={`Asset URL ${index + 1}`} hint={hint}>
-                      <div className="link-input-wrapper">
-                        <input
-                          value={link}
-                          onChange={(event) => handleLinkChange(index, event.target.value)}
-                          placeholder="https://provider.com/path/to/asset"
-                          autoComplete="off"
-                          disabled={!isAuthenticated}
-                        />
-                        {links.length > 1 ? (
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => handleRemoveLink(index)}
-                            style={{ marginLeft: 8 }}
-                            disabled={!isAuthenticated}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    </Field>
-                  </div>
-                )
-              })}
+            <div className="order-mode-toggle">
+              <button
+                type="button"
+                className={isBatchMode ? 'mode-pill mode-pill--active' : 'mode-pill'}
+                onClick={() => handleModeChange('batch')}
+                disabled={!isAuthenticated}
+              >
+                Batch download
+                <span className="mode-pill__hint">Up to 5 links</span>
+              </button>
+              <button
+                type="button"
+                className={isSingleMode ? 'mode-pill mode-pill--active' : 'mode-pill'}
+                onClick={() => handleModeChange('single')}
+                disabled={!isAuthenticated}
+              >
+                Single download
+                <span className="mode-pill__hint">Exactly 1 link</span>
+              </button>
+            </div>
 
-              <div className="form-actions" style={{ gap: 12 }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <form className="order-form" onSubmit={handlePreviewSubmit}>
+              <Field
+                label={isBatchMode ? 'Asset URLs' : 'Asset URL'}
+                hint={
+                  isBatchMode
+                    ? `Paste up to ${MAX_LINKS} URLs, one per line.`
+                    : 'Paste a direct asset link. Provider detection runs automatically.'
+                }
+              >
+                {isBatchMode ? (
+                  <textarea
+                    value={batchInput}
+                    onChange={handleBatchInputChange}
+                    placeholder={'https://provider.com/path/to/asset\nhttps://provider.com/asset-two'}
+                    rows={6}
+                    disabled={!isAuthenticated}
+                  />
+                ) : (
+                  <input
+                    value={singleInput}
+                    onChange={handleSingleInputChange}
+                    placeholder="https://provider.com/path/to/asset"
+                    autoComplete="off"
+                    disabled={!isAuthenticated}
+                  />
+                )}
+              </Field>
+
+              <div className="input-progress">
+                <div className="input-progress__bar" aria-hidden>
+                  <span style={{ width: `${(totalLinkCount / MAX_LINKS) * 100}%` }} />
+                </div>
+                <div className="input-progress__counters">
+                  <span>{totalLinkCount} / {MAX_LINKS} slots used</span>
+                  <span>{isBatchMode ? 'Batch mode' : 'Single mode'}</span>
+                </div>
+              </div>
+
+              <div className="form-actions order-form__actions">
+                <Field label="Response type" hint="Prefer a delivery target?">
+                  <select
+                    value={responseType}
+                    onChange={(event) => setResponseType(event.target.value as ResponseType)}
+                    disabled={!isAuthenticated}
+                  >
+                    {RESPONSE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <div className="form-actions__buttons">
+                  <button
+                    className="primary order-submit"
+                    type="submit"
+                    disabled={
+                      !isAuthenticated ||
+                      previewMutation.isPending ||
+                      totalLinkCount === 0 ||
+                      (isSingleMode && totalLinkCount !== 1)
+                    }
+                  >
+                    <span className="button-content">
+                      {previewMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
+                      {previewMutation.isPending
+                        ? 'Previewing…'
+                        : isBatchMode
+                          ? 'Process batch'
+                          : 'Process single'}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
-                    className="secondary"
-                    onClick={handleAddLink}
-                    disabled={!isAuthenticated || links.length >= MAX_LINKS}
+                    className="secondary order-clear"
+                    onClick={handleClearForm}
+                    disabled={!isAuthenticated}
                   >
-                    Add URL
+                    Clear
                   </button>
 
-                  <Field label="Response type" hint="Prefer a delivery target?">
-                    <select
-                      value={responseType}
-                      onChange={(event) => setResponseType(event.target.value as ResponseType)}
-                      disabled={!isAuthenticated}
+                  {previewEntries.length > 0 ? (
+                    <button
+                      type="button"
+                      className="secondary order-reset"
+                      onClick={clearPreviewState}
+                      disabled={previewMutation.isPending}
                     >
-                      {RESPONSE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                      Reset preview
+                    </button>
+                  ) : null}
                 </div>
-
-                <button
-                  className="primary"
-                  type="submit"
-                  disabled={!isAuthenticated || previewMutation.isPending}
-                >
-                  <span className="button-content">
-                    {previewMutation.isPending ? <span className="button-spinner" aria-hidden="true" /> : null}
-                    {previewMutation.isPending ? 'Previewing…' : 'Preview order'}
-                  </span>
-                </button>
-
-                {previewEntries.length > 0 || previewMutation.isPending ? (
-                  <button type="button" className="secondary" onClick={clearPreviewState} disabled={previewMutation.isPending}>
-                    Reset preview
-                  </button>
-                ) : null}
               </div>
             </form>
 
@@ -524,15 +619,16 @@ export default function StockOrderPage() {
                 </p>
               ) : (
                 <div className="preview-results order-preview-grid">
-                  {previewEntries.map((entry, index) => {
+                  {previewEntries.map((entry: PreviewEntry, index: number) => {
                     if (!entry.task) {
                       return (
-                        <Toast
-                          key={`preview-error-${index}`}
-                          title="Preview failed"
-                          message={entry.error ?? 'Unknown error while preparing this asset.'}
-                          variant="error"
-                        />
+                        <Fragment key={`preview-error-${index}`}>
+                          <Toast
+                            title="Preview failed"
+                            message={entry.error ?? 'Unknown error while preparing this asset.'}
+                            variant="error"
+                          />
+                        </Fragment>
                       )
                     }
 
@@ -542,26 +638,27 @@ export default function StockOrderPage() {
                     const variant = getPreviewVariant(task.status)
 
                     return (
-                      <PreviewTaskCard
-                        key={task.taskId}
-                        task={task}
-                        costLabel={formatCost(task)}
-                        createdAtLabel={createdAtLabel}
-                        isSelected={isSelected}
-                        onToggle={() => toggleTaskSelection(task.taskId)}
-                        onQueue={() => handleCommitSingle(task.taskId)}
-                        onRemove={() => removePreviewTask(task.taskId)}
-                        selectionDisabled={commitMutation.isPending}
-                        queueDisabled={commitMutation.isPending}
-                        removeDisabled={commitMutation.isPending}
-                        variant={variant}
-                      />
+                      <Fragment key={task.taskId}>
+                        <PreviewTaskCard
+                          task={task}
+                          costLabel={formatCost(task)}
+                          createdAtLabel={createdAtLabel}
+                          isSelected={isSelected}
+                          onToggle={() => toggleTaskSelection(task.taskId)}
+                          onQueue={() => handleCommitSingle(task.taskId)}
+                          onRemove={() => removePreviewTask(task.taskId)}
+                          selectionDisabled={commitMutation.isPending}
+                          queueDisabled={commitMutation.isPending}
+                          removeDisabled={commitMutation.isPending}
+                          variant={variant}
+                        />
+                      </Fragment>
                     )
                   })}
                 </div>
               )}
 
-              {previewEntries.some((entry) => entry.task) ? (
+              {previewEntries.some((entry: PreviewEntry) => entry.task) ? (
                 <div className="form-actions" style={{ marginTop: 16 }}>
                   <button
                     type="button"
@@ -589,7 +686,7 @@ export default function StockOrderPage() {
 
           <OrderSummaryPanel
             selectedCount={selectedTaskIds.size}
-            totalTasks={previewEntries.filter((entry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task)).length}
+            totalTasks={previewEntries.filter((entry: PreviewEntry): entry is PreviewEntry & { task: StockOrderTask } => Boolean(entry.task)).length}
             totalSelectedPoints={totalSelectedPoints}
             availablePoints={balanceQuery.data?.points ?? 0}
             remainingPoints={Math.max((balanceQuery.data?.points ?? 0) - totalSelectedPoints, 0)}
