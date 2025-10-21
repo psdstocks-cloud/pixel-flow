@@ -26,7 +26,6 @@ import {
   type PreviewOrderResponse,
   type ResponseType,
   type StockOrderTask,
-  type StockSite,
 } from '../../../../lib/stock'
 import { useSession } from '../../../../lib/session'
 
@@ -156,10 +155,7 @@ export default function StockOrderPage() {
     staleTime: 15_000,
   })
 
-  const detectionHints = useMemo(() => {
-    const sites = (sitesQuery.data ?? []) as StockSite[]
-    return activeLinks.map((link) => detectSiteAndIdFromUrl(link, sites))
-  }, [activeLinks, sitesQuery.data])
+  const detectionHints = useMemo(() => activeLinks.map((link) => detectSiteAndIdFromUrl(link)), [activeLinks])
 
   const previewMutation = useMutation({
     mutationFn: (payload: PreviewOrderPayload) => previewOrder(payload),
