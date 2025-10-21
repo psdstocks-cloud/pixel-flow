@@ -343,18 +343,22 @@ export const nehtwClient = {
 
   async createOrder(request: CreateOrderRequest, signal?: AbortSignal) {
     const { site, id, url, responsetype, notification_channel } = request
+
+    const hasUrl = Boolean(url)
     const hasSiteId = Boolean(site && id)
-    const path = hasSiteId
-      ? `/stockorder/${encodeURIComponent(site!)}/${encodeURIComponent(id!)}`
-      : '/stockorder'
+
+    let path = '/stockorder'
+    if (!hasUrl && hasSiteId) {
+      path += `/${encodeURIComponent(site!)}/${encodeURIComponent(id!)}`
+    }
+
     const searchParams: Record<string, string | number | boolean | undefined> = {
       url,
-      site,
-      id,
       responsetype,
       responseType: responsetype,
       notificationChannel: notification_channel,
     }
+
     const data = await requestJSON<JsonRecord>({ path, searchParams, signal })
     return normalizeOrderResponse(data)
   },

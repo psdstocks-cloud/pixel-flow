@@ -245,7 +245,13 @@ export default function StockOrderPageV2() {
       }
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Unable to queue the selected orders.'
+      const message =
+        typeof error === 'object' && error !== null && 'response' in error
+          ? ((error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+            'Unable to queue the selected orders.')
+          : error instanceof Error
+            ? error.message
+            : 'Unable to queue the selected orders.'
       setCommitFeedback({ type: 'error', message })
       notify({ title: 'Unable to queue orders', message, variant: 'error' })
     },
