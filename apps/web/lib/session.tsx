@@ -5,6 +5,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 export type SessionState = {
   userId: string | null
   email?: string | null
+  name?: string | null
+  image?: string | null
   nextPaymentDue?: string | null
 }
 
@@ -27,18 +29,20 @@ async function fetchSessionFromApi(): Promise<SessionState | null> {
       throw new Error(`Session request failed: ${response.status}`)
     }
     const body = (await response.json()) as {
-      user?: { id?: string; email?: string; nextPaymentDue?: string }
+      user?: { id?: string; email?: string; name?: string; image?: string; nextPaymentDue?: string }
     }
     const userId = body?.user?.id ?? DEFAULT_USER_ID
     if (!userId) return null
     return {
       userId,
       email: body?.user?.email ?? null,
+      name: body?.user?.name ?? null,
+      image: body?.user?.image ?? null,
       nextPaymentDue: body?.user?.nextPaymentDue ?? null,
     }
   } catch (error) {
     if (process.env.NODE_ENV === 'development' && DEFAULT_USER_ID) {
-      return { userId: DEFAULT_USER_ID }
+      return { userId: DEFAULT_USER_ID, email: null, name: null, image: null, nextPaymentDue: null }
     }
     throw error instanceof Error ? error : new Error('Unknown session error')
   }

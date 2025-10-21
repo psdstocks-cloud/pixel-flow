@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { useSession, signOut } from 'next-auth/react'
+import { signOut } from 'next-auth/react'
 import { landingTheme } from '../styles/landingTheme'
 import type { ShellMessages } from '../lib/i18n/shell'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { MobileNavDrawer } from './MobileNavDrawer'
 import { initAnalytics, trackEvent } from '../lib/analytics'
+import { useSession } from '../lib/session'
 
 interface LandingHeaderProps {
   locale: string
@@ -25,11 +26,13 @@ const navMotion = {
 
 export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeaderProps) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { session, setSession } = useSession()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [isAvatarOpen, setIsAvatarOpen] = useState(false)
   const avatarMenuRef = useRef<HTMLDivElement>(null)
+
+  const isAuthenticated = Boolean(session?.userId)
 
   const toggleMenu = () => setIsMenuOpen((prev) => !prev)
 
@@ -83,7 +86,6 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
         source: 'desktop-nav',
         locale,
       })
-      scrollToAnchor(href)
       setIsMenuOpen(false)
     },
     [locale, scrollToAnchor],
@@ -109,19 +111,27 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
   )
 
   const avatarInitials = useMemo(() => {
-    if (!session?.user?.name) return 'PF'
-    return session.user.name
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join('')
-  }, [session?.user?.name])
+    if (session?.name) {
+      return session.name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part: string) => part.charAt(0).toUpperCase())
+        .join('')
+    }
+
+    if (session?.email) {
+      return session.email[0]?.toUpperCase() ?? 'PF'
+    }
+
+    return 'PF'
+  }, [session?.name, session?.email])
 
   const avatarMenuItems = useMemo(() => labels.authLinks ?? [], [labels.authLinks])
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/' })
+    setSession(null)
   }
 
   return (
@@ -152,7 +162,7 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
         </nav>
         <div className="landing-header__actions">
           <LanguageSwitcher currentLocale={locale as never} labels={languageSwitcher} />
-          {session?.user ? (
+          {isAuthenticated ? (
             <div className="landing-header__avatar" ref={avatarMenuRef}>
               <button
                 type="button"
@@ -161,8 +171,8 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
                 aria-haspopup="menu"
                 aria-expanded={isAvatarOpen}
               >
-                {session.user.image ? (
-                  <Image src={session.user.image} alt={session.user.name ?? 'Account'} width={36} height={36} className="landing-header__avatar-image" />
+                {session?.image ? (
+                  <Image src={session.image} alt={session?.name ?? 'Account'} width={36} height={36} className="landing-header__avatar-image" />
                 ) : (
                   <span className="landing-header__avatar-fallback">{avatarInitials}</span>
                 )}
@@ -170,8 +180,8 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
               {isAvatarOpen ? (
                 <div className="landing-header__avatar-menu" role="menu">
                   <div className="landing-header__avatar-meta">
-                    <span className="landing-header__avatar-name">{session.user.name ?? 'Account'}</span>
-                    {session.user.email ? <span className="landing-header__avatar-email">{session.user.email}</span> : null}
+                    <span className="landing-header__avatar-name">{session?.name ?? 'Account'}</span>
+                    {session?.email ? <span className="landing-header__avatar-email">{session.email}</span> : null}
                   </div>
                   <ul>
                     {avatarMenuItems.map((item) => (
@@ -246,10 +256,10 @@ export function LandingHeader({ locale, labels, languageSwitcher }: LandingHeade
         locale={locale}
         labels={labels}
         languageSwitcher={languageSwitcher}
-        isAuthenticated={Boolean(session?.user)}
+        isAuthenticated={isAuthenticated}
         avatarInitials={avatarInitials}
-        userName={session?.user?.name}
-        userEmail={session?.user?.email}
+        userName={session?.name}
+        userEmail={session?.email}
         onSignOut={handleSignOut}
         onNavigate={handleNavigate}
         onClose={() => setIsMenuOpen(false)}
