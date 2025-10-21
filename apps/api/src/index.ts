@@ -14,6 +14,7 @@ const allowedOrigins = [
   'https://pixel-flow-sigma.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
+  'https://pixel-flow-production.up.railway.app',
 ]
 
 // Middleware
