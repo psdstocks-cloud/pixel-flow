@@ -34,7 +34,7 @@ export function URLInput({
     if (value !== undefined && value !== inputValue) {
       setInputValue(value)
     }
-  }, [value])
+  }, [value, inputValue])
 
   const parsedUrls = useMemo<ParsedUrl[]>(() => {
     return inputValue
