@@ -346,17 +346,67 @@ export const nehtwClient = {
 
     const encodedSite = encodeURIComponent(site ?? '')
     const encodedId = encodeURIComponent(id ?? '')
-    const path = `/stockorder/${encodedSite}/${encodedId}`
+    const basePath = `${NEHTW_BASE_URL}/stockorder/${encodedSite}/${encodedId}`
+    const reqUrl = new URL(basePath)
 
-    const searchParams: Record<string, string | number | boolean | undefined> = {
-      url,
-      responsetype,
-      responseType: responsetype,
-      notificationChannel: notification_channel,
+    if (url) {
+      reqUrl.searchParams.set('url', url)
+    }
+    if (responsetype) {
+      reqUrl.searchParams.set('responsetype', responsetype)
+      reqUrl.searchParams.set('responseType', responsetype)
+    }
+    if (notification_channel) {
+      reqUrl.searchParams.set('notification_channel', notification_channel)
+      reqUrl.searchParams.set('notificationChannel', notification_channel)
     }
 
-    const data = await requestJSON<JsonRecord>({ path, searchParams, signal })
-    return normalizeOrderResponse(data)
+    const headers: Record<string, string> = {
+      ...DEFAULT_HEADERS,
+    }
+    if (NEHTW_API_KEY) {
+      headers['X-Api-Key'] = NEHTW_API_KEY
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(`[nehtw] createOrder request: GET ${reqUrl.toString()}`)
+
+    const response = await fetch(reqUrl.toString(), {
+      method: 'GET',
+      headers,
+      signal,
+    })
+
+    const errorBody = response.ok ? undefined : await response.text()
+    if (!response.ok) {
+      // eslint-disable-next-line no-console
+      console.error(`[nehtw] createOrder failed (${response.status}): ${errorBody ?? '<empty>'}`)
+      try {
+        const parsedError = errorBody ? JSON.parse(errorBody) : undefined
+        throw new Error(
+          `Upstream API request failed: ${response.statusText} - ${
+            (parsedError && typeof parsedError.message === 'string' && parsedError.message) || errorBody || 'Unknown error'
+          }`,
+        )
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.message.startsWith('Upstream API request failed:')) {
+          throw parseError
+        }
+        throw new Error(`Upstream API request failed: ${response.statusText} - ${errorBody ?? 'Unknown error'}`)
+      }
+    }
+
+    const raw = (await response.json()) as JsonRecord
+    if ((raw.error === true || raw.success === false) && raw.message) {
+      // eslint-disable-next-line no-console
+      console.error('[nehtw] createOrder reported failure:', raw)
+      throw new Error(`Nehtw API reported failure: ${String(raw.message)}`)
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[nehtw] createOrder success:', raw)
+
+    return normalizeOrderResponse(raw)
   },
 
   async getOrderStatus(taskId: string, responsetype?: string, signal?: AbortSignal): Promise<OrderStatusResponse> {
