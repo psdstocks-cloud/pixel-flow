@@ -81,10 +81,14 @@ function getStatusLabel(entry: PreviewEntry) {
   if (!entry.task) return { label: 'Unable to preview', tone: 'error' as const }
 
   const status = entry.task.status?.toLowerCase() ?? 'unknown'
+  const hasDownloadUrl = Boolean(entry.task.downloadUrl)
 
   switch (status) {
     case 'ready':
-      return { label: 'Ready for download', tone: 'primary' as const }
+      return {
+        label: hasDownloadUrl ? 'Download ready' : 'Generate download link',
+        tone: 'primary' as const,
+      }
     case 'error':
       return { label: entry.error ?? 'Processing failed', tone: 'error' as const }
     case 'processing':
@@ -896,14 +900,19 @@ export default function StockOrderPageV2() {
                 <p className="order-v2__empty">Unable to load providers.</p>
               ) : sitesQuery.data && sitesQuery.data.length > 0 ? (
                 <ul className="order-v2__sites">
-                  {sitesQuery.data.slice(0, 5).map((site) => (
-                    <li key={site.site}>
-                      <span className="order-v2__site-name">{site.displayName ?? site.site}</span>
-                      <span className="order-v2__site-price">
-                        {site.price != null ? `${site.price}${site.currency ? ` ${site.currency}` : ''}` : '1 credit'}
-                      </span>
-                    </li>
-                  ))}
+                  {sitesQuery.data.slice(0, 5).map((site) => {
+                    const sitePrice = site.price ?? site.minPrice ?? null
+                    return (
+                      <li key={site.site}>
+                        <span className="order-v2__site-name">{site.displayName ?? site.site}</span>
+                        <span className="order-v2__site-price">
+                          {sitePrice != null
+                            ? `${sitePrice}${site.currency ? ` ${site.currency}` : ' pts'}`
+                            : 'Varies by asset'}
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : (
                 <p className="order-v2__empty">No providers configured.</p>
