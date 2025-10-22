@@ -354,11 +354,9 @@ export const nehtwClient = {
     }
     if (responsetype) {
       reqUrl.searchParams.set('responsetype', responsetype)
-      reqUrl.searchParams.set('responseType', responsetype)
     }
     if (notification_channel) {
       reqUrl.searchParams.set('notification_channel', notification_channel)
-      reqUrl.searchParams.set('notificationChannel', notification_channel)
     }
 
     const headers: Record<string, string> = {
@@ -397,10 +395,16 @@ export const nehtwClient = {
     }
 
     const raw = (await response.json()) as JsonRecord
-    if ((raw.error === true || raw.success === false) && raw.message) {
+    if (raw.error === true || raw.success === false) {
+      const errorMsg = String(
+        raw.message ||
+          raw.data ||
+          (typeof raw.error === 'string' ? raw.error : '') ||
+          'Unknown error',
+      )
       // eslint-disable-next-line no-console
       console.error('[nehtw] createOrder reported failure:', raw)
-      throw new Error(`Nehtw API reported failure: ${String(raw.message)}`)
+      throw new Error(`Nehtw API reported failure: ${errorMsg}`)
     }
 
     // eslint-disable-next-line no-console
@@ -410,9 +414,8 @@ export const nehtwClient = {
   },
 
   async getOrderStatus(taskId: string, responsetype?: string, signal?: AbortSignal): Promise<OrderStatusResponse> {
-    const searchParams = {
+    const searchParams: Record<string, string | undefined> = {
       responsetype,
-      responseType: responsetype,
     }
     const data = await requestJSON<JsonRecord>({
       path: `/order/${encodeURIComponent(taskId)}/status`,
@@ -423,9 +426,8 @@ export const nehtwClient = {
   },
 
   async confirmOrder(taskId: string, responsetype?: string, signal?: AbortSignal): Promise<ConfirmOrderResponse> {
-    const searchParams = {
+    const searchParams: Record<string, string | undefined> = {
       responsetype,
-      responseType: responsetype,
     }
     const data = await requestJSON<JsonRecord>({
       path: `/order/${encodeURIComponent(taskId)}/confirm`,

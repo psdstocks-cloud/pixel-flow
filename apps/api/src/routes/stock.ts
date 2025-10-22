@@ -444,7 +444,7 @@ router.post('/order/preview', requireUser, async (req, res, next) => {
             costPoints: info.costPoints ?? undefined,
             costAmount: info.costAmount ?? undefined,
             costCurrency: info.costCurrency ?? undefined,
-            status: 'preview',
+            status: 'ready',
             latestMessage: 'Ready to order.',
             responsetype,
           },

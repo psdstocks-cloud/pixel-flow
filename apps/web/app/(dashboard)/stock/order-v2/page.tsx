@@ -15,7 +15,9 @@ import {
   commitOrder,
   detectSiteAndIdFromUrl,
   fetchBalance,
+  fetchDownload,
   fetchSites,
+  fetchTasks,
   previewOrder,
   queries,
   type CommitOrderPayload,
@@ -50,37 +52,52 @@ type PreviewStats = {
 }
 
 function computeStats(entries: PreviewEntry[]): PreviewStats {
-  return entries.reduce<PreviewStats>((acc, entry) => {
-    acc.total += 1
-    if (!entry.task) {
-      acc.errors += 1
+  return entries.reduce<PreviewStats>(
+    (acc, entry) => {
+      acc.total += 1
+      if (!entry.task) {
+        acc.errors += 1
+        return acc
+      }
+
+      const status = entry.task.status?.toLowerCase() ?? 'unknown'
+
+      if (status === 'ready') {
+        acc.ready += 1
+        acc.totalPoints += entry.task.costPoints ?? 0
+      } else if (status === 'error') {
+        acc.errors += 1
+      } else {
+        acc.pending += 1
+      }
+
       return acc
-    }
-
-    const status = entry.task.status?.toLowerCase() ?? 'unknown'
-    if (status === 'ready' || status === 'success' || status === 'completed') {
-      acc.ready += 1
-      acc.totalPoints += entry.task.costPoints ?? 0
-    } else if (status === 'error' || status === 'failed' || status === 'cancelled') {
-      acc.errors += 1
-    } else {
-      acc.pending += 1
-    }
-
-    return acc
-  }, { total: 0, ready: 0, errors: 0, pending: 0, totalPoints: 0 })
+    },
+    { total: 0, ready: 0, errors: 0, pending: 0, totalPoints: 0 },
+  )
 }
 
 function getStatusLabel(entry: PreviewEntry) {
   if (!entry.task) return { label: 'Unable to preview', tone: 'error' as const }
+
   const status = entry.task.status?.toLowerCase() ?? 'unknown'
-  if (status === 'ready' || status === 'success' || status === 'completed') {
-    return { label: 'Ready for download', tone: 'primary' as const }
+
+  switch (status) {
+    case 'ready':
+      return { label: 'Ready for download', tone: 'primary' as const }
+    case 'error':
+      return { label: entry.error ?? 'Processing failed', tone: 'error' as const }
+    case 'processing':
+      return { label: 'Processing order…', tone: 'secondary' as const }
+    case 'queued':
+      return { label: 'Queued for processing', tone: 'secondary' as const }
+    case 'downloading':
+      return { label: 'Preparing download…', tone: 'secondary' as const }
+    case 'preview':
+      return { label: 'Ready to order', tone: 'primary' as const }
+    default:
+      return { label: `Status: ${status}`, tone: 'secondary' as const }
   }
-  if (status === 'error' || status === 'failed' || status === 'cancelled') {
-    return { label: entry.error ?? 'Unable to process asset', tone: 'error' as const }
-  }
-  return { label: 'Processing preview…', tone: 'secondary' as const }
 }
 
 function formatCost(task: StockOrderTask | undefined) {
@@ -134,6 +151,60 @@ export default function StockOrderPageV2() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const downloadMutation = useMutation({
+    mutationFn: async ({ taskId, responsetype }: { taskId: string; responsetype: ResponseType }) => {
+      return fetchDownload(taskId, responsetype)
+    },
+    onSuccess: (data, variables) => {
+      const { taskId } = variables
+      const downloadUrl = data.download.downloadUrl
+
+      if (!downloadUrl) {
+        notify({
+          title: 'Download not ready',
+          message: 'The download link is not yet available. Please try again in a moment.',
+          variant: 'error',
+        })
+        return
+      }
+
+      setPreviewEntries((prev) =>
+        prev.map((entry) => {
+          if (entry.task?.taskId === taskId) {
+            return {
+              ...entry,
+              task: {
+                ...entry.task,
+                downloadUrl,
+              },
+            }
+          }
+          return entry
+        }),
+      )
+
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+
+      notify({
+        title: 'Download ready',
+        message: 'Your file is ready. Download should start automatically.',
+        variant: 'success',
+      })
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Could not generate download link'
+      notify({
+        title: 'Download failed',
+        message,
+        variant: 'error',
+      })
+    },
+  })
+
+  const handleGenerateDownload = (taskId: string) => {
+    downloadMutation.mutate({ taskId, responsetype: responseType })
+  }
+
   const accessToken = session?.accessToken
 
   const balanceQuery = useQuery({
@@ -144,6 +215,42 @@ export default function StockOrderPageV2() {
     },
     enabled: isAuthenticated,
     staleTime: 15_000,
+  })
+
+  const pollingTaskIds = useMemo(() => {
+    return previewEntries
+      .filter((entry) => {
+        if (!entry.task) return false
+        const status = entry.task.status?.toLowerCase()
+        return status === 'queued' || status === 'processing'
+      })
+      .map((entry) => entry.task!.taskId)
+  }, [previewEntries])
+
+  useQuery({
+    queryKey: ['tasks-status-polling', userId, ...pollingTaskIds],
+    queryFn: async ({ signal }) => {
+      if (!userId || pollingTaskIds.length === 0) return null
+
+      const tasks = await fetchTasks(userId, 50, signal)
+
+      setPreviewEntries((prev) =>
+        prev.map((entry) => {
+          if (!entry.task) return entry
+          const updated = tasks.find((taskItem) => taskItem.taskId === entry.task?.taskId)
+          if (updated) {
+            return { ...entry, task: updated }
+          }
+          return entry
+        }),
+      )
+
+      return tasks
+    },
+    enabled: isAuthenticated && pollingTaskIds.length > 0,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
   })
 
   const detectionHints = useMemo(() => activeLinks.map((link) => detectSiteAndIdFromUrl(link)), [activeLinks])
@@ -666,19 +773,44 @@ export default function StockOrderPageV2() {
                             />
                             <span>Select</span>
                           </label>
-                          <button
-                            type="button"
-                            className="order-v2__secondary"
-                            onClick={() => handleCommitSingle(task.taskId)}
-                            disabled={statusTone !== 'primary' || commitMutation.isPending}
-                          >
-                            Confirm
-                          </button>
+
+                          {statusTone === 'primary' && task.status?.toLowerCase() === 'ready' ? (
+                            task.downloadUrl ? (
+                              <a
+                                href={task.downloadUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="order-v2__primary"
+                                download
+                              >
+                                Download
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                className="order-v2__primary"
+                                onClick={() => handleGenerateDownload(task.taskId)}
+                                disabled={downloadMutation.isPending}
+                              >
+                                {downloadMutation.isPending ? 'Generating…' : 'Get Download'}
+                              </button>
+                            )
+                          ) : statusTone === 'primary' && task.status?.toLowerCase() === 'preview' ? (
+                            <button
+                              type="button"
+                              className="order-v2__secondary"
+                              onClick={() => handleCommitSingle(task.taskId)}
+                              disabled={commitMutation.isPending}
+                            >
+                              Confirm Order
+                            </button>
+                          ) : null}
+
                           <button
                             type="button"
                             className="order-v2__ghost"
                             onClick={() => removePreviewTask(task.taskId)}
-                            disabled={commitMutation.isPending}
+                            disabled={commitMutation.isPending || downloadMutation.isPending}
                           >
                             Remove
                           </button>
