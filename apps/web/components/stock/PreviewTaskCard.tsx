@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import clsx from 'clsx'
-import type { KeyboardEvent, MouseEvent } from 'react'
+import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { StockOrderTask } from '../../lib/stock'
 import { StatusBadge } from '../StatusBadge'
 
@@ -38,7 +38,9 @@ export function PreviewTaskCard({
   removeDisabled = false,
   variant = 'secondary',
 }: PreviewTaskCardProps) {
-  const thumbnail = task.thumbnailUrl ?? task.previewUrl ?? undefined
+  const [imageFailed, setImageFailed] = useState(false)
+  const thumbnailCandidate = task.thumbnailUrl ?? task.previewUrl ?? undefined
+  const thumbnail = imageFailed ? undefined : thumbnailCandidate
   const title = task.title ?? task.assetId ?? task.sourceUrl
   const provider = task.site ?? 'Unknown provider'
   const latestMessage = task.latestMessage ?? undefined
@@ -90,7 +92,13 @@ export function PreviewTaskCard({
     >
       <div className="preview-task-card__media" aria-hidden>
         {thumbnail ? (
-          <Image src={thumbnail} alt="" fill sizes="(min-width: 1024px) 220px, 100vw" />
+          <Image
+            src={thumbnail}
+            alt={title ?? provider ?? 'Asset thumbnail'}
+            fill
+            sizes="(min-width: 1024px) 220px, 100vw"
+            onError={() => setImageFailed(true)}
+          />
         ) : (
           <div className="preview-task-card__media-placeholder">
             <span>{provider?.[0]?.toUpperCase() ?? '?'}</span>

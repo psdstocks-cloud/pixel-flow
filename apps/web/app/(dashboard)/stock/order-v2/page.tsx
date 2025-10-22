@@ -753,7 +753,6 @@ export default function StockOrderPageV2() {
                   </Link>
                 </div>
               )}
-              <p className="order-v2__hint">All downloads cost 10 points.</p>
             </>
           </Card>
 
