@@ -180,7 +180,9 @@ function safeString(value: unknown): string | undefined {
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
-    const parsed = Number(value)
+    const cleaned = value.replace(/[^0-9.,-]/g, '').replace(/,/g, '')
+    if (cleaned.length === 0) return null
+    const parsed = Number(cleaned)
     if (Number.isFinite(parsed)) return parsed
   }
   return null
