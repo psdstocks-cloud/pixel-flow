@@ -314,11 +314,11 @@ export default function StockOrderPageV2() {
 
     const uniqueItems = new Map<string, { url: string; site?: string; id?: string }>()
 
-    activeLinks.forEach((link) => {
+    activeLinks.forEach((link, index) => {
       const trimmed = link.trim()
       if (!trimmed) return
       if (!uniqueItems.has(trimmed)) {
-        const detection = detectionHints.find((hint, index) => activeLinks[index] === link)
+        const detection = detectionHints[index]
         uniqueItems.set(trimmed, {
           url: trimmed,
           site: detection?.site,
