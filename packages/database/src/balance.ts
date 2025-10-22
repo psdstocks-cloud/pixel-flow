@@ -1,4 +1,4 @@
-import { Prisma, UserBalance } from '@prisma/client'
+import { Prisma, PrismaClient, User } from '@prisma/client'
 import { prisma } from './index'
 
 export class InsufficientBalanceError extends Error {
@@ -8,56 +8,67 @@ export class InsufficientBalanceError extends Error {
   }
 }
 
-export async function getOrCreateBalance(userId: string, tx = prisma): Promise<UserBalance> {
-  return tx.userBalance.upsert({
-    where: { userId },
-    update: {},
-    create: { userId },
-  })
-}
+type PrismaTransaction = Prisma.TransactionClient
 
-export async function setBalancePoints(userId: string, points: number, tx = prisma): Promise<UserBalance> {
-  return tx.userBalance.upsert({
-    where: { userId },
-    update: { points },
-    create: { userId, points },
-  })
-}
+const getClient = (tx?: PrismaTransaction): PrismaClient | PrismaTransaction => tx ?? prisma
 
-export async function creditBalance(userId: string, points: number, tx = prisma): Promise<UserBalance> {
-  if (points <= 0) return getOrCreateBalance(userId, tx)
-  return tx.userBalance.upsert({
-    where: { userId },
-    update: { points: { increment: points } },
-    create: { userId, points },
+export async function getUserBalance(userId: string, tx?: PrismaTransaction): Promise<number> {
+  const client = getClient(tx)
+  const user = await client.user.findUnique({
+    where: { id: userId },
+    select: { balance: true },
   })
-}
 
-export async function debitBalance(userId: string, points: number, tx = prisma): Promise<UserBalance> {
-  if (points <= 0) {
-    return getOrCreateBalance(userId, tx)
+  if (!user) {
+    throw new Error(`User ${userId} not found`)
   }
 
-  return tx.$transaction(async (trx) => {
-    const balance = await trx.userBalance.upsert({
-      where: { userId },
-      update: {},
-      create: { userId },
-    })
+  return user.balance
+}
 
-    if (balance.points < points) {
-      throw new InsufficientBalanceError(userId, points, balance.points)
-    }
+export async function setBalancePoints(userId: string, points: number, tx?: PrismaTransaction): Promise<User> {
+  if (points < 0) {
+    throw new Error('Balance cannot be negative')
+  }
 
-    return trx.userBalance.update({
-      where: { id: balance.id },
-      data: { points: { decrement: points } },
-    })
+  const client = getClient(tx)
+
+  return client.user.update({
+    where: { id: userId },
+    data: { balance: points },
   })
 }
 
-export async function adjustBalance(userId: string, deltaPoints: number, tx = prisma): Promise<UserBalance> {
-  if (deltaPoints === 0) return getOrCreateBalance(userId, tx)
+export async function creditBalance(userId: string, points: number, tx?: PrismaTransaction): Promise<User> {
+  const client = getClient(tx)
+
+  if (points <= 0) {
+    return client.user.findUniqueOrThrow({ where: { id: userId } })
+  }
+
+  return client.user.update({
+    where: { id: userId },
+    data: { balance: { increment: points } },
+  })
+}
+
+export async function debitBalance(userId: string, points: number, tx?: PrismaTransaction): Promise<User> {
+  if (points <= 0) {
+    const client = getClient(tx)
+    return client.user.findUniqueOrThrow({ where: { id: userId } })
+  }
+
+  if (tx) {
+    return performDebit(userId, points, tx)
+  }
+
+  return prisma.$transaction((trx) => performDebit(userId, points, trx))
+}
+
+export async function adjustBalance(userId: string, deltaPoints: number, tx?: PrismaTransaction): Promise<User> {
+  const client = getClient(tx)
+
+  if (deltaPoints === 0) return client.user.findUniqueOrThrow({ where: { id: userId } })
   if (deltaPoints > 0) return creditBalance(userId, deltaPoints, tx)
   return debitBalance(userId, Math.abs(deltaPoints), tx)
 }
@@ -66,4 +77,24 @@ export type BalanceTransactionCallback<T> = (trx: Prisma.TransactionClient) => P
 
 export async function withBalanceTransaction<T>(callback: BalanceTransactionCallback<T>): Promise<T> {
   return prisma.$transaction(async (trx) => callback(trx))
+}
+
+async function performDebit(userId: string, points: number, tx: Prisma.TransactionClient): Promise<User> {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { balance: true },
+  })
+
+  if (!user) {
+    throw new Error(`User ${userId} not found`)
+  }
+
+  if (user.balance < points) {
+    throw new InsufficientBalanceError(userId, points, user.balance)
+  }
+
+  return tx.user.update({
+    where: { id: userId },
+    data: { balance: { decrement: points } },
+  })
 }

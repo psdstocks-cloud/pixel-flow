@@ -1,4 +1,5 @@
 import { prisma } from './index'
+import { creditBalance } from './balance'
 
 export type PackageWithSubscription = {
   id: string
@@ -78,11 +79,7 @@ export async function createSubscription(userId: string, packageId: string, stri
     })
 
     // Credit initial points
-    await tx.userBalance.upsert({
-      where: { userId },
-      update: { points: { increment: pkg.points } },
-      create: { userId, points: pkg.points },
-    })
+    await creditBalance(userId, pkg.points, tx)
 
     return subscription
   })
@@ -118,11 +115,7 @@ export async function renewSubscription(subscriptionId: string) {
     })
 
     // Credit renewal points
-    await tx.userBalance.upsert({
-      where: { userId: subscription.userId },
-      update: { points: { increment: subscription.package.points } },
-      create: { userId: subscription.userId, points: subscription.package.points },
-    })
+    await creditBalance(subscription.userId, subscription.package.points, tx)
 
     return updatedSubscription
   })
