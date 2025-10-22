@@ -312,17 +312,18 @@ export default function StockOrderPageV2() {
       return
     }
 
-    const uniqueItems = new Map<string, { url: string }>()
+    const uniqueItems = new Map<string, { url: string; site?: string; id?: string }>()
 
     activeLinks.forEach((link) => {
       const trimmed = link.trim()
       if (!trimmed) return
       if (!uniqueItems.has(trimmed)) {
-        const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://')
-
-        if (isUrl) {
-          uniqueItems.set(trimmed, { url: trimmed })
-        }
+        const detection = detectionHints.find((hint, index) => activeLinks[index] === link)
+        uniqueItems.set(trimmed, {
+          url: trimmed,
+          site: detection?.site,
+          id: detection?.id,
+        })
       }
     })
 
@@ -408,7 +409,15 @@ export default function StockOrderPageV2() {
   const detectedSites = useMemo(() => {
     const seen = new Set<string>()
     detectionHints.forEach((hint, index) => {
-      const label = hint?.site ?? new URL(activeLinks[index] ?? '', 'https://example.com').hostname.replace(/^www\./, '')
+      const url = activeLinks[index]
+      let label = hint?.site
+      if (!label && url) {
+        try {
+          label = new URL(url).hostname.replace(/^www\./, '')
+        } catch {
+          label = undefined
+        }
+      }
       if (label) seen.add(label)
     })
     return Array.from(seen)
