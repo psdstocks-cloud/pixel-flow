@@ -31,6 +31,7 @@ function formatError(error: unknown): string {
 }
 
 const MAX_BULK_ITEMS = 5
+const DEFAULT_TASK_COST_POINTS = 2
 
 type NodeReadableStream = import('node:stream/web').ReadableStream<Uint8Array>
 
@@ -156,7 +157,7 @@ function formatTaskResponse(task: StockOrderTaskModel) {
     title: task.title ?? undefined,
     previewUrl: task.previewUrl ?? undefined,
     thumbnailUrl: task.thumbnailUrl ?? undefined,
-    costPoints: task.costPoints ?? undefined,
+    costPoints: task.costPoints ?? DEFAULT_TASK_COST_POINTS,
     costAmount: task.costAmount ?? undefined,
     costCurrency: task.costCurrency ?? undefined,
     latestMessage: task.latestMessage ?? undefined,
@@ -172,7 +173,7 @@ function formatTaskResponse(task: StockOrderTaskModel) {
 }
 
 function calculateTaskCost(task: StockOrderTaskModel): number {
-  return Math.max(task.costPoints ?? 0, 0)
+  return Math.max(task.costPoints ?? DEFAULT_TASK_COST_POINTS, 0)
 }
 
 function sanitizeExternalTaskId(value: unknown): string | undefined {
@@ -453,7 +454,7 @@ router.post('/order/preview', requireUser, async (req, res, next) => {
             title: info.title ?? undefined,
             previewUrl: info.previewUrl ?? undefined,
             thumbnailUrl: info.thumbnailUrl ?? undefined,
-            costPoints: info.costPoints ?? undefined,
+            costPoints: DEFAULT_TASK_COST_POINTS,
             costAmount: info.costAmount ?? undefined,
             costCurrency: info.costCurrency ?? undefined,
             status: 'preview',
@@ -553,6 +554,7 @@ router.post('/order/commit', requireUser, async (req, res, next) => {
             latestMessage,
             downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
             responsetype: responsetype ?? task.responsetype ?? undefined,
+            costPoints: task.costPoints ?? DEFAULT_TASK_COST_POINTS,
             ...externalTaskData,
           },
         })
@@ -569,6 +571,7 @@ router.post('/order/commit', requireUser, async (req, res, next) => {
           data: {
             status: 'error',
             latestMessage: message,
+            costPoints: task.costPoints ?? DEFAULT_TASK_COST_POINTS,
           },
         })
         failures.push({ taskId: task.id, error: message })
@@ -611,7 +614,7 @@ router.post('/order', requireUser, async (req, res, next) => {
     const info = await nehtwClient.getStockInfo({ site, id, url, responsetype })
 
     const sourceUrl = info.sourceUrl ?? url ?? (site && id ? `${site}:${id}` : '')
-    const costPoints = Math.max(info.costPoints ?? 0, 0)
+    const costPoints = DEFAULT_TASK_COST_POINTS
     let pointsReserved = 0
     if (costPoints > 0) {
       try {
@@ -638,7 +641,7 @@ router.post('/order', requireUser, async (req, res, next) => {
         title: info.title ?? undefined,
         previewUrl: info.previewUrl ?? undefined,
         thumbnailUrl: info.thumbnailUrl ?? undefined,
-        costPoints: info.costPoints ?? undefined,
+        costPoints: costPoints,
         costAmount: info.costAmount ?? undefined,
         costCurrency: info.costCurrency ?? undefined,
         status: 'pending',
@@ -678,6 +681,7 @@ router.post('/order', requireUser, async (req, res, next) => {
           status: success ? 'queued' : 'error',
           latestMessage,
           downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
+          costPoints,
           ...externalTaskData,
         },
       })
@@ -700,6 +704,7 @@ router.post('/order', requireUser, async (req, res, next) => {
         data: {
           status: 'error',
           latestMessage: message,
+          costPoints,
         },
       })
 

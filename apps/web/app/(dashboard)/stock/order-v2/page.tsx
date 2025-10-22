@@ -30,6 +30,7 @@ import { useSession } from '../../../../lib/session'
 
 const MAX_LINKS = 5
 const DEFAULT_RESPONSE_TYPE: ResponseType = 'any'
+const DEFAULT_TASK_COST_POINTS = 2
 
 const RESPONSE_OPTIONS: Array<{ value: ResponseType; label: string }> = [
   { value: 'any', label: 'Any (auto)' },
@@ -61,14 +62,16 @@ function computeStats(entries: PreviewEntry[]): PreviewStats {
       }
 
       const status = entry.task.status?.toLowerCase() ?? 'unknown'
+      const costPoints = entry.task.costPoints ?? DEFAULT_TASK_COST_POINTS
 
       if (status === 'ready') {
         acc.ready += 1
-        acc.totalPoints += entry.task.costPoints ?? 0
+        acc.totalPoints += costPoints
       } else if (status === 'error') {
         acc.errors += 1
       } else {
         acc.pending += 1
+        acc.totalPoints += costPoints
       }
 
       return acc
@@ -108,7 +111,7 @@ function formatCost(task: StockOrderTask | undefined) {
   if (!task) return '—'
   if (task.costPoints != null) return `${task.costPoints} pts`
   if (task.costAmount != null && task.costCurrency) return `${task.costAmount} ${task.costCurrency}`
-  return '—'
+  return `${DEFAULT_TASK_COST_POINTS} pts`
 }
 
 export default function StockOrderPageV2() {
@@ -539,7 +542,10 @@ export default function StockOrderPageV2() {
       Boolean(entry.task && selectedTaskIds.has(entry.task.taskId)),
   )
 
-  const totalSelectedPoints = selectedPreviewTasks.reduce((sum, entry) => sum + (entry.task.costPoints ?? 0), 0)
+  const totalSelectedPoints = selectedPreviewTasks.reduce(
+    (sum, entry) => sum + (entry.task.costPoints ?? DEFAULT_TASK_COST_POINTS),
+    0,
+  )
 
   const showSignInWarning = sessionStatus === 'ready' && !isAuthenticated
 
