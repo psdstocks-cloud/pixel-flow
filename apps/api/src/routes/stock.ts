@@ -533,6 +533,19 @@ router.post('/order/commit', requireUser, async (req, res, next) => {
         const success = upstream.success !== false
         const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
         const externalTaskId = sanitizeExternalTaskId(upstream.taskId ?? task.externalTaskId ?? undefined)
+        let externalTaskData: { externalTaskId?: string } = {}
+        if (externalTaskId) {
+          const existing = await prisma.stockOrderTask.findFirst({
+            where: {
+              externalTaskId,
+              id: { not: task.id },
+            },
+            select: { id: true },
+          })
+          if (!existing) {
+            externalTaskData = { externalTaskId }
+          }
+        }
         const updated = await prisma.stockOrderTask.update({
           where: { id: task.id },
           data: {
@@ -540,7 +553,7 @@ router.post('/order/commit', requireUser, async (req, res, next) => {
             latestMessage,
             downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
             responsetype: responsetype ?? task.responsetype ?? undefined,
-            ...(externalTaskId ? { externalTaskId } : {}),
+            ...externalTaskData,
           },
         })
 
@@ -646,13 +659,26 @@ router.post('/order', requireUser, async (req, res, next) => {
       const success = upstream.success !== false
       const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
       const externalTaskId = sanitizeExternalTaskId(upstream.taskId ?? task.externalTaskId ?? undefined)
+      let externalTaskData: { externalTaskId?: string } = {}
+      if (externalTaskId) {
+        const existing = await prisma.stockOrderTask.findFirst({
+          where: {
+            externalTaskId,
+            id: { not: task.id },
+          },
+          select: { id: true },
+        })
+        if (!existing) {
+          externalTaskData = { externalTaskId }
+        }
+      }
       task = await prisma.stockOrderTask.update({
         where: { id: task.id },
         data: {
           status: success ? 'queued' : 'error',
           latestMessage,
           downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
-          ...(externalTaskId ? { externalTaskId } : {}),
+          ...externalTaskData,
         },
       })
 
