@@ -175,6 +175,18 @@ function calculateTaskCost(task: StockOrderTaskModel): number {
   return Math.max(task.costPoints ?? 0, 0)
 }
 
+function sanitizeExternalTaskId(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const asString = String(value)
+    return asString.length > 0 ? asString : undefined
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+  return undefined
+}
+
 function buildCreateOrderPayload(task: StockOrderTaskModel, overrideResponsetype?: string) {
   const isHttpSource = /^https?:\/\//i.test(task.sourceUrl)
   return {
@@ -520,14 +532,15 @@ router.post('/order/commit', requireUser, async (req, res, next) => {
 
         const success = upstream.success !== false
         const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
+        const externalTaskId = sanitizeExternalTaskId(upstream.taskId ?? task.externalTaskId ?? undefined)
         const updated = await prisma.stockOrderTask.update({
           where: { id: task.id },
           data: {
             status: success ? 'queued' : 'error',
-            externalTaskId: upstream.taskId ?? task.externalTaskId ?? undefined,
             latestMessage,
             downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
             responsetype: responsetype ?? task.responsetype ?? undefined,
+            ...(externalTaskId ? { externalTaskId } : {}),
           },
         })
 
@@ -632,13 +645,14 @@ router.post('/order', requireUser, async (req, res, next) => {
 
       const success = upstream.success !== false
       const latestMessage = upstream.message || upstream.status || (success ? 'Queued upstream.' : 'Failed upstream.')
+      const externalTaskId = sanitizeExternalTaskId(upstream.taskId ?? task.externalTaskId ?? undefined)
       task = await prisma.stockOrderTask.update({
         where: { id: task.id },
         data: {
           status: success ? 'queued' : 'error',
-          externalTaskId: upstream.taskId ?? task.externalTaskId ?? undefined,
           latestMessage,
           downloadUrl: upstream.downloadUrl ?? task.downloadUrl ?? undefined,
+          ...(externalTaskId ? { externalTaskId } : {}),
         },
       })
 
