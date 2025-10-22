@@ -190,10 +190,11 @@ function sanitizeExternalTaskId(value: unknown): string | undefined {
 
 function buildCreateOrderPayload(task: StockOrderTaskModel, overrideResponsetype?: string) {
   const isHttpSource = /^https?:\/\//i.test(task.sourceUrl)
+  const url = isHttpSource ? encodeURI(task.sourceUrl) : undefined
   return {
     site: task.site ?? undefined,
     id: task.assetId ?? undefined,
-    url: isHttpSource ? task.sourceUrl : undefined,
+    url,
     responsetype: overrideResponsetype ?? task.responsetype ?? undefined,
     notification_channel: DEFAULT_NOTIFICATION_CHANNEL,
   }
