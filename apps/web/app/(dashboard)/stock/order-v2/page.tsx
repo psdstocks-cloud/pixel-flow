@@ -307,30 +307,36 @@ export default function StockOrderPageV2() {
 
       const committedIds = new Set(pendingTaskIdsRef.current)
       const failureMap = new Map(data.failures.map((failure) => [failure.taskId, failure.error]))
+      const taskUpdateMap = new Map(data.tasks.map((task) => [task.taskId, task]))
 
       setPreviewEntries((prev) =>
-        prev
-          .map<PreviewEntry | null>((entry) => {
-            if (!entry.task) return entry
-            const { taskId } = entry.task
-            if (!committedIds.has(taskId)) return entry
-            if (!failureMap.has(taskId)) {
-              return null
-            }
-            const updatedTask = data.tasks.find((task) => task.taskId === taskId) ?? entry.task
+        prev.map<PreviewEntry>((entry) => {
+          if (!entry.task) return entry
+          const { taskId } = entry.task
+          if (!committedIds.has(taskId)) return entry
+
+          if (failureMap.has(taskId)) {
+            const updatedTask = taskUpdateMap.get(taskId) ?? entry.task
+            const failureMessage = failureMap.get(taskId)
             return {
               task: {
                 ...updatedTask,
                 status: 'error',
-                latestMessage: failureMap.get(taskId) ?? updatedTask.latestMessage,
+                latestMessage: failureMessage ?? updatedTask.latestMessage,
               },
-              error: failureMap.get(taskId) ?? entry.error,
+              error: failureMessage ?? entry.error,
             }
-          })
-          .filter((entry): entry is PreviewEntry => Boolean(entry)),
+          }
+
+          const updatedTask = taskUpdateMap.get(taskId) ?? entry.task
+          return {
+            task: updatedTask,
+            error: undefined,
+          }
+        }),
       )
 
-      setSelectedTaskIds(new Set(failureMap.keys()))
+      setSelectedTaskIds(failureMap.size > 0 ? new Set(failureMap.keys()) : new Set())
 
       setCommitFeedback({
         type: data.failures.length > 0 ? 'error' : 'success',
@@ -347,12 +353,6 @@ export default function StockOrderPageV2() {
             : 'All selected orders were queued successfully.',
         variant: data.failures.length > 0 ? 'error' : 'success',
       })
-
-      if (data.failures.length === 0) {
-        setPreviewEntries([])
-        setSelectedTaskIds(new Set())
-        setPreviewFeedback(null)
-      }
     },
     onError: (error: unknown) => {
       const message =
