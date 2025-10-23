@@ -41,31 +41,33 @@ export default function PricingPage() {
   };
 
   const handlePurchase = async (packageId: string) => {
-    setPurchasing(packageId);
-    try {
-      const response = await fetch(`${API_URL}/api/packages/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': USER_ID,
-        },
-        body: JSON.stringify({ packageId }),
-      });
+  setPurchasing(packageId);
+  try {
+    const response = await fetch(`${API_URL}/api/packages/purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': USER_ID,
+      },
+      body: JSON.stringify({ packageId }),
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (data.success) {
-        alert(`✅ ${data.message}\nNew Balance: ${data.newBalance} points`);
-        router.push('/stock/order-v2');
-      } else {
-        alert('❌ ' + (data.error || 'Purchase failed'));
-      }
-    } catch (error: any) {
-      alert('❌ ' + (error.message || 'Purchase failed'));
-    } finally {
-      setPurchasing(null);
+    if (data.success) {
+      alert(`✅ ${data.message}\nNew Balance: ${data.newBalance} points`);
+      router.push('/stock/order-v2');
+    } else {
+      alert('❌ ' + (data.error || 'Purchase failed'));
     }
-  };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Purchase failed';
+    alert('❌ ' + message);
+  } finally {
+    setPurchasing(null);
+  }
+};
+
 
   if (loading) {
     return (
