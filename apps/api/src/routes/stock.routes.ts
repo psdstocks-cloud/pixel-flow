@@ -436,9 +436,3 @@ router.post('/parse-url', async (req: Request, res: Response) => {
 });
 
 export default router;
-  // ... rest of logic
-});
-
-router.post('/download', authMiddleware, async (req, res) => {
-  // ... rest of logic
-});
