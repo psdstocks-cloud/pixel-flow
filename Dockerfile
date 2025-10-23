@@ -4,6 +4,16 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 FROM node:22-slim AS base
 
 WORKDIR /app
+# Add these ARG declarations BEFORE any RUN commands that need them
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+# Make them available as ENV for the build
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Install openssl (required by Prisma)
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 
 # Install openssl for Prisma
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
