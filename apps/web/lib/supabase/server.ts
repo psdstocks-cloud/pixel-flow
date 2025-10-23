@@ -15,15 +15,15 @@ export async function createClient() {
         set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options });
-          } catch (_error) {
-            // Server component
+          } catch {
+            // Server component - ignore errors
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options });
-          } catch (_error) {
-            // Server component
+          } catch {
+            // Server component - ignore errors
           }
         },
       },
