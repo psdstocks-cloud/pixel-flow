@@ -8,30 +8,57 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String
-  verified  Boolean  @default(false)
-  balance   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  name         String?
+  email        String        @unique
+  password     String
+  verified     Boolean       @default(false)
+  balance      Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  orders       Order[]
+  batches      Batch[]
+  transactions Transaction[]
 
-  orders  Order[]
-  batches Batch[]
+  @@map("User")
 }
 
 model StockSite {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   name      String   @unique
+  price     Int
   active    Boolean  @default(true)
-  price     Int      @default(10)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("StockSite")
+}
+
+model Order {
+  id           String   @id @default(uuid())
+  userId       String
+  batchId      String?
+  taskId       String   @unique
+  site         String
+  stockId      String
+  stockUrl     String
+  status       String   @default("PROCESSING")
+  cost         Int
+  downloadLink String?
+  fileName     String?
+  errorMessage String?
+  retryCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  batch Batch? @relation(fields: [batchId], references: [id])
+
+  @@map("Order")
 }
 
 model Batch {
-  id              String   @id @default(cuid())
+  id              String   @id @default(uuid())
   userId          String
   totalOrders     Int
   completedOrders Int      @default(0)
@@ -41,37 +68,43 @@ model Batch {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id])
   orders Order[]
 
-  @@index([userId])
+  @@map("Batch")
 }
 
-model Order {
-  id           String   @id @default(cuid())
-  userId       String
-  batchId      String?
-  taskId       String   @unique
-  site         String
-  stockId      String
-  stockUrl     String
-  status       String   @default("PENDING")
-  cost         Int
-  stockTitle   String?
-  stockImage   String?
-  stockAuthor  String?
-  stockFormat  String?
-  downloadLink String?
-  fileName     String?
-  errorMessage String?
-  retryCount   Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model Package {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  points      Int
+  price       Float
+  isPopular   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  features    String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  batch Batch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
 
-  @@index([userId])
-  @@index([batchId])
-  @@index([taskId])
+  @@map("Package")
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  userId         String
+  packageId      String
+  amount         Float
+  pointsReceived Int
+  status         String   @default("pending")
+  paymentMethod  String?
+  paymentId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  package Package @relation(fields: [packageId], references: [id])
+
+  @@map("Transaction")
 }
