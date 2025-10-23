@@ -8,157 +8,70 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  password     String?
-  verified     Boolean  @default(false)
-  balance      Float    @default(0)
-  nehtwApiKey  String?
-  nehtwUsername String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  tokens         VerificationToken[]
-  subscriptions  UserSubscription[]
-  orders         Order[]
-  batches        Batch[]
-
-  @@index([email])
-}
-
-model VerificationToken {
   id        String   @id @default(cuid())
-  userId    String   @unique
-  token     String   @unique
-  expiresAt DateTime
+  email     String   @unique
+  name      String?
+  password  String
+  verified  Boolean  @default(false)
+  balance   Int      @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
-}
-
-model Package {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  points      Int      @default(0)
-  price       Float    @default(0)
-  currency    String   @default("USD")
-  interval    String   @default("month") // month, year
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  subscriptions UserSubscription[]
-
-  @@index([active])
-}
-
-model UserSubscription {
-  id                  String   @id @default(cuid())
-  userId              String
-  packageId           String
-  status              String   @default("active") // active, canceled, expired
-  currentPeriodStart  DateTime
-  currentPeriodEnd    DateTime
-  cancelAtPeriodEnd   Boolean  @default(false)
-  stripeSubscriptionId String? @unique
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  package   Package  @relation(fields: [packageId], references: [id])
-
-  @@index([userId])
-  @@index([packageId])
-  @@index([status])
-  @@index([currentPeriodEnd])
-}
-
-model Order {
-  id            String      @id @default(cuid())
-  userId        String
-  taskId        String      @unique
-  site          String
-  stockId       String
-  stockUrl      String?
-  status        OrderStatus @default(PENDING)
-  cost          Float
-  stockTitle    String?
-  stockImage    String?
-  stockAuthor   String?
-  stockFormat   String?
-  stockSize     String?
-  stockSource   String?
-  downloadLink  String?
-  fileName      String?
-  linkType      String?
-  responseType  String      @default("any")
-  batchId       String?
-  batchOrder    Int?
-  errorMessage  String?
-  retryCount    Int         @default(0)
-  maxRetries    Int         @default(60)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  completedAt   DateTime?
-
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  batch         Batch?      @relation(fields: [batchId], references: [id])
-
-  @@index([userId])
-  @@index([taskId])
-  @@index([batchId])
-  @@index([status])
-}
-
-model Batch {
-  id              String      @id @default(cuid())
-  userId          String
-  totalOrders     Int
-  completedOrders Int         @default(0)
-  failedOrders    Int         @default(0)
-  totalCost       Float
-  status          BatchStatus @default(PROCESSING)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  completedAt     DateTime?
-
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders          Order[]
-
-  @@index([userId])
-  @@index([status])
+  orders  Order[]
+  batches Batch[]
 }
 
 model StockSite {
   id        String   @id @default(cuid())
   name      String   @unique
   active    Boolean  @default(true)
-  price     Float
+  price     Int      @default(10)
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@index([name])
-  @@index([active])
 }
 
-enum OrderStatus {
-  PENDING
-  PROCESSING
-  READY
-  DOWNLOADING
-  COMPLETED
-  ERROR
-  CANCELLED
-  TIMEOUT
+model Batch {
+  id              String   @id @default(cuid())
+  userId          String
+  totalOrders     Int
+  completedOrders Int      @default(0)
+  failedOrders    Int      @default(0)
+  totalCost       Int
+  status          String   @default("PROCESSING")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
 }
 
-enum BatchStatus {
-  PROCESSING
-  COMPLETED
-  PARTIAL
-  FAILED
+model Order {
+  id           String   @id @default(cuid())
+  userId       String
+  batchId      String?
+  taskId       String   @unique
+  site         String
+  stockId      String
+  stockUrl     String
+  status       String   @default("PENDING")
+  cost         Int
+  stockTitle   String?
+  stockImage   String?
+  stockAuthor  String?
+  stockFormat  String?
+  downloadLink String?
+  fileName     String?
+  errorMessage String?
+  retryCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch Batch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([batchId])
+  @@index([taskId])
 }

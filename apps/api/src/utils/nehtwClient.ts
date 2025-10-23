@@ -1,117 +1,90 @@
-/**
- * Nehtw API Client Wrapper
- */
+import axios from 'axios';
 
-export interface NehtwStockInfo {
-  image: string
-  title: string
-  id: string
-  source: string
-  cost: number
-  ext: string
-  name: string
-  author: string
-  sizeInBytes: string
+const NEHTW_BASE_URL = 'https://nehtw.com/api';
+const NEHTW_API_KEY = process.env.NEHTW_API_KEY;
+
+if (!NEHTW_API_KEY) {
+  console.error('⚠️ NEHTW_API_KEY not configured in environment variables');
 }
 
-export interface NehtwOrderResponse {
-  success: boolean
-  task_id?: string
-  message?: string
+interface NehtwOrderRequest {
+  url: string;
+  responseType: string;
 }
 
-export interface NehtwStatusResponse {
-  success: boolean
-  status: 'processing' | 'ready'
-  message?: string
+interface NehtwOrderResponse {
+  success: boolean;
+  task_id?: string;
+  error?: string;
+  message?: string;
 }
 
-export interface NehtwDownloadResponse {
-  success: boolean
-  status: 'downloading' | 'ready'
-  downloadLink?: string
-  fileName?: string
-  linkType?: string
-  message?: string
+interface NehtwPollResponse {
+  success: boolean;
+  status: string;
+  download_link?: string;
+  file_name?: string;
+  error_message?: string;
 }
 
-export class NehtwAPIClient {
-  private readonly apiKey: string
-  private readonly baseURL = 'https://nehtw.com/api'
+export class NehtwClient {
+  private apiKey: string;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey
-  }
-
-  /**
-   * Make authenticated request
-   */
-  private async fetch<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      headers: {
-        'X-Api-Key': this.apiKey,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Nehtw API error: ${response.statusText}`)
+  constructor() {
+    if (!NEHTW_API_KEY) {
+      throw new Error('Nehtw API key not configured in environment variables');
     }
-
-    return response.json() as Promise<T>
+    this.apiKey = NEHTW_API_KEY;
   }
 
-  /**
-   * Step 1: Get stock information
-   */
-  async getStockInfo(site: string, id: string, fullUrl?: string): Promise<NehtwStockInfo> {
-    const encodedUrl = fullUrl ? encodeURIComponent(fullUrl) : ''
-    const endpoint = `/stockinfo/${site}/${id}${encodedUrl ? `?url=${encodedUrl}` : ''}`
+  async createOrder(url: string, responseType: string = 'any'): Promise<NehtwOrderResponse> {
+    try {
+      const response = await axios.post<NehtwOrderResponse>(
+        `${NEHTW_BASE_URL}/order`,
+        { url, responseType },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
 
-    const data: { success: boolean; data?: NehtwStockInfo } = await this.fetch(endpoint)
-
-    if (!data.success || !data.data) {
-      throw new Error(data.data ? 'Failed to fetch stock info' : 'Failed to fetch stock info')
+      return response.data;
+    } catch (error: any) {
+      console.error('Nehtw order error:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Failed to create order',
+      };
     }
-
-    return data.data
   }
 
-  /**
-   * Step 2: Create order
-   */
-  async createOrder(site: string, id: string, fullUrl?: string): Promise<string> {
-    const encodedUrl = fullUrl ? encodeURIComponent(fullUrl) : ''
-    const endpoint = `/stockorder/${site}/${id}${encodedUrl ? `?url=${encodedUrl}` : ''}`
+  async pollOrder(taskId: string): Promise<NehtwPollResponse> {
+    try {
+      const response = await axios.post<NehtwPollResponse>(
+        `${NEHTW_BASE_URL}/poll`,
+        { task_id: taskId },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
 
-    const data: NehtwOrderResponse = await this.fetch(endpoint)
-
-    if (!data.success || !data.task_id) {
-      throw new Error(data.message || 'Failed to create order')
+      return response.data;
+    } catch (error: any) {
+      console.error('Nehtw poll error:', error.response?.data || error.message);
+      return {
+        success: false,
+        status: 'error',
+        error_message: error.response?.data?.error || error.message || 'Failed to poll order',
+      };
     }
-
-    return data.task_id
-  }
-
-  /**
-   * Step 3: Check order status
-   */
-  async checkOrderStatus(taskId: string, responseType: string = 'any'): Promise<NehtwStatusResponse> {
-    const endpoint = `/order/${taskId}/status?responsetype=${responseType}`
-    return this.fetch<NehtwStatusResponse>(endpoint)
-  }
-
-  /**
-   * Step 4: Generate download link
-   */
-  async generateDownloadLink(taskId: string, responseType: string = 'any'): Promise<NehtwDownloadResponse> {
-    const endpoint = `/v2/order/${taskId}/download?responsetype=${responseType}`
-    return this.fetch<NehtwDownloadResponse>(endpoint)
-  }
-
-  /**
-   * Get stock sites pricing
-   */
-  async getStockSites(): Promise<Record<string, unknown>> {
-    return this.fetch('/stocksites')
   }
 }
+
+export const nehtwClient = new NehtwClient();

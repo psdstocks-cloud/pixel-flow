@@ -1,387 +1,292 @@
-import { Router } from 'express';
-import { OrderStatus, BatchStatus } from '@prisma/client';
-import { authMiddleware, requireNehtwKey } from '../middleware/auth';
-import { asyncHandler, APIError } from '../middleware/errorHandler';
-import { NehtwAPIClient } from '../utils/nehtwClient';
-import { parseStockURL, validateURLs, requiresFullURL } from '../utils/stockUrlParser';
-import { prisma } from '../lib/prisma';
+import { Router, Request, Response } from 'express';
+import { prisma } from '@pixel-flow/database';
+import { nehtwClient } from '../utils/nehtwClient';
+import { parseStockUrl } from '../utils/stockUrlParser';
 
 const router = Router();
 
-/**
- * POST /api/orders/batch
- * Create batch order (Step 1 & 2 combined)
- */
-router.post(
-  '/orders/batch',
-  authMiddleware,
-  requireNehtwKey,
-  asyncHandler(async (req, res) => {
+// Create batch order
+router.post('/batch', async (req: Request, res: Response) => {
+  try {
     const { urls, responseType = 'any' } = req.body;
-    const user = req.user!; // Assert user exists after authMiddleware
+    const userId = req.headers['x-user-id'] as string;
 
-    // Validate input
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User ID required' });
+    }
+
     if (!urls || !Array.isArray(urls) || urls.length === 0) {
-      throw new APIError('URLs array is required', 400);
+      return res.status(400).json({ success: false, error: 'URLs array required' });
     }
 
     if (urls.length > 5) {
-      throw new APIError('Maximum 5 URLs per batch', 400);
+      return res.status(400).json({ success: false, error: 'Maximum 5 URLs per batch' });
     }
 
-    // Validate response type
-    const validResponseTypes = ['any', 'gdrive', 'mydrivelink', 'asia'];
-    if (!validResponseTypes.includes(responseType)) {
-      throw new APIError('Invalid response type', 400);
+    // Get user
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // Parse and validate URLs
-    const { valid: parsedUrls, invalid: invalidUrls } = validateURLs(urls);
-
-    if (invalidUrls.length > 0) {
-      throw new APIError(
-        `Invalid URLs detected: ${invalidUrls.join(', ')}`,
-        400
-      );
+    // Parse URLs and get stock sites
+    const parsedUrls = urls.map(url => parseStockUrl(url)).filter(Boolean);
+    if (parsedUrls.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid stock URLs provided' });
     }
 
-    // Initialize Nehtw client
-    const client = new NehtwAPIClient(user.nehtwApiKey!);
-
-    // Step 1: Fetch stock info for all URLs
-    const stockInfoPromises = parsedUrls.map(async ({ site, id, url }) => {
-      try {
-        const needsFullURL = requiresFullURL(site);
-        const stockInfo = await client.getStockInfo(
-          site,
-          id,
-          needsFullURL ? url : undefined
-        );
-        return { url, site, id, stockInfo, error: null };
-      } catch (err: any) {
-        return {
-          url,
-          site,
-          id,
-          stockInfo: null,
-          error: err.message || 'Failed to fetch info',
-        };
-      }
-    });
-
-    const stockResults = await Promise.all(stockInfoPromises);
-
-    // Filter successful results
-    const successfulResults = stockResults.filter((r) => r.stockInfo);
-
-    if (successfulResults.length === 0) {
-      throw new APIError('Failed to fetch info for all URLs', 400);
-    }
+    // Get stock sites from database
+    const stockSites = await prisma.stockSite.findMany();
+    const stockSiteMap = new Map(stockSites.map(site => [site.name.toLowerCase(), site]));
 
     // Calculate total cost
-    const totalCost = successfulResults.reduce(
-      (sum, r) => sum + (r.stockInfo!.cost || 0),
-      0
-    );
+    let totalCost = 0;
+    for (const parsed of parsedUrls) {
+      const site = stockSiteMap.get(parsed.site.toLowerCase());
+      if (site) {
+        totalCost += site.price;
+      }
+    }
 
     // Check user balance
     if (user.balance < totalCost) {
-      throw new APIError(
-        `Insufficient balance. Required: ${totalCost} pts, Available: ${user.balance} pts`,
-        400
-      );
+      return res.status(400).json({
+        success: false,
+        error: 'Insufficient balance',
+        required: totalCost,
+        available: user.balance,
+      });
     }
 
     // Create batch
     const batch = await prisma.batch.create({
       data: {
-        userId: user.id,
-        totalOrders: successfulResults.length,
+        userId,
+        totalOrders: parsedUrls.length,
         totalCost,
-        status: BatchStatus.PROCESSING,
+        status: 'PROCESSING',
       },
     });
 
-    // Step 2: Create orders with Nehtw
-    const orderPromises = successfulResults.map(
-      async ({ url, site, id, stockInfo }, index) => {
-        try {
-          const needsFullURL = requiresFullURL(site);
-          const taskId = await client.createOrder(
-            site,
-            id,
-            needsFullURL ? url : undefined
-          );
+    // Create orders and send to Nehtw
+    const orders = [];
+    const failedUrls = [];
 
-          // Create order in database
-          return await prisma.order.create({
-            data: {
-              userId: user.id,
-              taskId,
-              site,
-              stockId: id,
-              stockUrl: url,
-              cost: stockInfo!.cost,
-              status: OrderStatus.PROCESSING,
-              responseType,
-              batchId: batch.id,
-              batchOrder: index,
-              stockTitle: stockInfo!.title,
-              stockImage: stockInfo!.image,
-              stockAuthor: stockInfo!.author,
-              stockFormat: stockInfo!.ext,
-              stockSize: stockInfo!.sizeInBytes,
-              stockSource: stockInfo!.source,
-            },
-          });
-        } catch (err: any) {
-          console.error(`Order creation failed for ${url}:`, err);
-          return null;
-        }
+    for (const parsed of parsedUrls) {
+      const site = stockSiteMap.get(parsed.site.toLowerCase());
+      if (!site) {
+        failedUrls.push(parsed.url);
+        continue;
       }
-    );
 
-    const orders = (await Promise.all(orderPromises)).filter(Boolean);
+      // Create order in Nehtw
+      const nehtwResponse = await nehtwClient.createOrder(parsed.url, responseType);
 
-    if (orders.length === 0) {
-      throw new APIError('Failed to create any orders', 500);
+      if (!nehtwResponse.success || !nehtwResponse.task_id) {
+        failedUrls.push(parsed.url);
+        continue;
+      }
+
+      // Create order in database
+      const order = await prisma.order.create({
+        data: {
+          userId,
+          batchId: batch.id,
+          taskId: nehtwResponse.task_id,
+          site: parsed.site,
+          stockId: parsed.stockId,
+          stockUrl: parsed.url,
+          status: 'PROCESSING',
+          cost: site.price,
+        },
+      });
+
+      orders.push(order);
     }
 
-    // Deduct points from user
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { balance: { decrement: totalCost } },
+    // Update batch
+    await prisma.batch.update({
+      where: { id: batch.id },
+      data: {
+        totalOrders: orders.length,
+        status: orders.length === 0 ? 'FAILED' : 'PROCESSING',
+      },
     });
 
-    res.json({
+    // Deduct balance
+    if (orders.length > 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { balance: { decrement: totalCost } },
+      });
+    }
+
+    return res.json({
       success: true,
       batchId: batch.id,
       orders,
       totalCost,
       remainingBalance: user.balance - totalCost,
-      failedUrls: stockResults.filter((r) => !r.stockInfo).map((r) => r.url),
+      failedUrls: failedUrls.length > 0 ? failedUrls : undefined,
     });
-  })
-);
+  } catch (error: any) {
+    console.error('Batch order error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-/**
- * POST /api/orders/:taskId/poll
- * Poll single order status (Step 3 & 4)
- */
-router.post(
-  '/orders/:taskId/poll',
-  authMiddleware,
-  requireNehtwKey,
-  asyncHandler(async (req, res) => {
+// Poll order status
+router.post('/:taskId/poll', async (req: Request, res: Response) => {
+  try {
     const { taskId } = req.params;
-    const user = req.user!; // Assert user exists after authMiddleware
+    const userId = req.headers['x-user-id'] as string;
 
-    // Find order
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User ID required' });
+    }
+
+    // Get order from database
     const order = await prisma.order.findFirst({
-      where: { taskId, userId: user.id },
+      where: { taskId, userId },
     });
 
     if (!order) {
-      throw new APIError('Order not found', 404);
+      return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
-    // If already completed or errored, return current state
-    if (
-      order.status === OrderStatus.COMPLETED ||
-      order.status === OrderStatus.ERROR ||
-      order.status === OrderStatus.TIMEOUT
-    ) {
-      return res.json({ success: true, order });
+    // If already completed, return cached data
+    if (order.status === 'COMPLETED' || order.status === 'ERROR' || order.status === 'TIMEOUT') {
+      return res.json({ success: true, order, status: order.status });
     }
 
-    // Check retry limit
-    if (order.retryCount >= order.maxRetries) {
-      const updatedOrder = await prisma.order.update({
-        where: { taskId },
-        data: {
-          status: OrderStatus.TIMEOUT,
-          errorMessage: 'Polling timeout exceeded (3 minutes)',
-        },
-      });
-      return res.json({
-        success: false,
-        error: 'Timeout',
-        order: updatedOrder,
-      });
-    }
+    // Poll Nehtw API
+    const nehtwResponse = await nehtwClient.pollOrder(taskId);
 
-    // Initialize Nehtw client
-    const client = new NehtwAPIClient(user.nehtwApiKey!);
+    // Update order based on response
+    let updateData: any = {
+      retryCount: { increment: 1 },
+    };
 
-    // Step 3: Check order status
-    const statusData = await client.checkOrderStatus(taskId, order.responseType);
-
-    if (!statusData.success) {
-      const updatedOrder = await prisma.order.update({
-        where: { taskId },
-        data: {
-          status: OrderStatus.ERROR,
-          errorMessage: statusData.message || 'Status check failed',
-          retryCount: { increment: 1 },
-        },
-      });
-      return res.json({
-        success: false,
-        error: statusData.message,
-        order: updatedOrder,
-      });
-    }
-
-    // If ready, generate download link (Step 4)
-    if (statusData.status === 'ready') {
-      const downloadData = await client.generateDownloadLink(taskId, order.responseType);
-
-      if (downloadData.success && downloadData.status === 'ready' && downloadData.downloadLink) {
-        const updatedOrder = await prisma.order.update({
-          where: { taskId },
-          data: {
-            status: OrderStatus.COMPLETED,
-            downloadLink: downloadData.downloadLink,
-            fileName: downloadData.fileName,
-            linkType: downloadData.linkType,
-            completedAt: new Date(),
-          },
-        });
-
-        return res.json({
-          success: true,
-          order: updatedOrder,
-          status: 'completed',
-        });
-      } else {
-        const updatedOrder = await prisma.order.update({
-          where: { taskId },
-          data: {
-            status: OrderStatus.DOWNLOADING,
-            retryCount: { increment: 1 },
-          },
-        });
-
-        return res.json({
-          success: true,
-          order: updatedOrder,
-          status: 'downloading',
-        });
+    if (nehtwResponse.success) {
+      if (nehtwResponse.status === 'completed' && nehtwResponse.download_link) {
+        updateData.status = 'COMPLETED';
+        updateData.downloadLink = nehtwResponse.download_link;
+        updateData.fileName = nehtwResponse.file_name || 'download';
+      } else if (nehtwResponse.status === 'processing') {
+        updateData.status = 'PROCESSING';
+      } else if (nehtwResponse.status === 'error') {
+        updateData.status = 'ERROR';
+        updateData.errorMessage = nehtwResponse.error_message || 'Unknown error';
       }
     } else {
-      const updatedOrder = await prisma.order.update({
-        where: { taskId },
-        data: { retryCount: { increment: 1 } },
-      });
-
-      return res.json({
-        success: true,
-        order: updatedOrder,
-        status: 'processing',
-      });
+      updateData.status = 'ERROR';
+      updateData.errorMessage = nehtwResponse.error_message || 'Polling failed';
     }
-  })
-);
 
-/**
- * GET /api/batches/:batchId
- * Get batch status with all orders
- */
-router.get(
-  '/batches/:batchId',
-  authMiddleware,
-  asyncHandler(async (req, res) => {
+    // Check for timeout (60 retries = 3 minutes at 3-second intervals)
+    if (order.retryCount >= 60 && updateData.status !== 'COMPLETED') {
+      updateData.status = 'TIMEOUT';
+      updateData.errorMessage = 'Order timed out after 3 minutes';
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: updateData,
+    });
+
+    return res.json({ success: true, order: updatedOrder, status: updatedOrder.status });
+  } catch (error: any) {
+    console.error('Poll order error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get batch status
+router.get('/batches/:batchId', async (req: Request, res: Response) => {
+  try {
     const { batchId } = req.params;
-    const user = req.user!; // Assert user exists after authMiddleware
+    const userId = req.headers['x-user-id'] as string;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User ID required' });
+    }
 
     const batch = await prisma.batch.findFirst({
-      where: { id: batchId, userId: user.id },
-      include: {
-        orders: {
-          orderBy: { batchOrder: 'asc' },
-        },
-      },
+      where: { id: batchId, userId },
+      include: { orders: true },
     });
 
     if (!batch) {
-      throw new APIError('Batch not found', 404);
+      return res.status(404).json({ success: false, error: 'Batch not found' });
     }
 
-    // Calculate statistics
-    const completed = batch.orders.filter(
-      (order) => order.status === OrderStatus.COMPLETED
-    ).length;
-    
-    const failed = batch.orders.filter(
-      (order) => order.status === OrderStatus.ERROR || order.status === OrderStatus.TIMEOUT
-    ).length;
-    
-    const processing = batch.orders.filter(
-      (order) =>
-        order.status === OrderStatus.PROCESSING ||
-        order.status === OrderStatus.READY ||
-        order.status === OrderStatus.DOWNLOADING
-    ).length;
+    // Calculate stats
+    const stats = {
+      total: batch.orders.length,
+      completed: batch.orders.filter(o => o.status === 'COMPLETED').length,
+      failed: batch.orders.filter(o => o.status === 'ERROR' || o.status === 'TIMEOUT').length,
+      processing: batch.orders.filter(o => ['PROCESSING', 'READY', 'DOWNLOADING'].includes(o.status)).length,
+    };
 
-    // Update batch status if all orders are done
-    if (completed + failed === batch.totalOrders) {
-      const newStatus =
-        failed === 0
-          ? BatchStatus.COMPLETED
-          : completed === 0
-          ? BatchStatus.FAILED
-          : BatchStatus.PARTIAL;
+    // Update batch status
+    let batchStatus = batch.status;
+    if (stats.processing === 0) {
+      if (stats.failed === stats.total) {
+        batchStatus = 'FAILED';
+      } else if (stats.completed === stats.total) {
+        batchStatus = 'COMPLETED';
+      } else {
+        batchStatus = 'PARTIAL';
+      }
 
       await prisma.batch.update({
         where: { id: batchId },
         data: {
-          status: newStatus,
-          completedOrders: completed,
-          failedOrders: failed,
-          completedAt: new Date(),
+          status: batchStatus,
+          completedOrders: stats.completed,
+          failedOrders: stats.failed,
         },
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       batch: {
         ...batch,
-        stats: {
-          total: batch.totalOrders,
-          completed,
-          failed,
-          processing,
-        },
+        status: batchStatus,
+        stats,
       },
     });
-  })
-);
+  } catch (error: any) {
+    console.error('Get batch error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-/**
- * GET /api/orders
- * Get user's order history (paginated)
- */
-router.get(
-  '/orders',
-  authMiddleware,
-  asyncHandler(async (req, res) => {
-    const user = req.user!; // Assert user exists after authMiddleware
+// Get user orders
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User ID required' });
+    }
+
     const skip = (page - 1) * limit;
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
-        where: { userId: user.id },
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      prisma.order.count({ where: { userId: user.id } }),
+      prisma.order.count({ where: { userId } }),
     ]);
 
-    res.json({
+    return res.json({
       success: true,
       orders,
       pagination: {
@@ -391,7 +296,10 @@ router.get(
         totalPages: Math.ceil(total / limit),
       },
     });
-  })
-);
+  } catch (error: any) {
+    console.error('Get orders error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 export default router;
