@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { apiClient, Order, Batch } from '../../../../lib/api';
 import { usePolling } from '../../../../lib/hooks/usePolling';
 import { StepIndicator } from './components/StepIndicator';
@@ -11,6 +12,7 @@ import { BatchProgress } from './components/BatchProgress';
 import { StickyFooter } from './components/StickyFooter';
 
 export default function OrderV2Page() {
+  const { data: session } = useSession();
   const [currentStep, setCurrentStep] = useState(1);
   const [urls, setUrls] = useState<string[]>([]);
   const [deliveryType, setDeliveryType] = useState('any');
@@ -118,6 +120,10 @@ export default function OrderV2Page() {
   };
 
   useEffect(() => {
+    if (session?.user?.id) {
+      apiClient.setUserId(session.user.id);
+      }
+      }, [session]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep]);
 
