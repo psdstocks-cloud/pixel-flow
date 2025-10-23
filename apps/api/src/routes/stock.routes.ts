@@ -436,3 +436,15 @@ router.post('/parse-url', async (req: Request, res: Response) => {
 });
 
 export default router;
+import { authMiddleware } from '../middleware/auth.middleware';
+
+// Protect these routes
+router.post('/order', authMiddleware, async (req, res) => {
+  // Now req.user is available
+  const userId = req.user!.id;
+  // ... rest of logic
+});
+
+router.post('/download', authMiddleware, async (req, res) => {
+  // ... rest of logic
+});

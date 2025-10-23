@@ -7,104 +7,195 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ===== USER MANAGEMENT =====
+
 model User {
-  id           String        @id @default(uuid())
-  name         String?
-  email        String        @unique
-  password     String
-  verified     Boolean       @default(false)
-  balance      Int           @default(0)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  orders       Order[]
-  batches      Batch[]
-  transactions Transaction[]
-
-  @@map("User")
+  id                String   @id @default(cuid())
+  email             String   @unique
+  supabaseId        String   @unique  // Link to Supabase auth.users.id
+  
+  // Profile
+  fullName          String?
+  avatarUrl         String?
+  
+  // Account status
+  isActive          Boolean  @default(true)
+  emailVerified     Boolean  @default(false)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastLoginAt       DateTime?
+  
+  // Relations
+  balance           Balance?
+  transactions      Transaction[]
+  orders            Order[]
+  packagePurchases  PackagePurchase[]
+  
+  @@index([email])
+  @@index([supabaseId])
 }
 
-model StockSite {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  price     Int
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ===== BALANCE & CREDITS =====
 
-  @@map("StockSite")
+model Balance {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  
+  // Credits
+  credits           Float    @default(0)
+  currency          String   @default("USD")
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
 }
 
-model Order {
-  id           String   @id @default(uuid())
-  userId       String
-  batchId      String?
-  taskId       String   @unique
-  site         String
-  stockId      String
-  stockUrl     String
-  status       String   @default("PROCESSING")
-  cost         Int
-  downloadLink String?
-  fileName     String?
-  errorMessage String?
-  retryCount   Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user  User   @relation(fields: [userId], references: [id])
-  batch Batch? @relation(fields: [batchId], references: [id])
-
-  @@map("Order")
-}
-
-model Batch {
-  id              String   @id @default(uuid())
-  userId          String
-  totalOrders     Int
-  completedOrders Int      @default(0)
-  failedOrders    Int      @default(0)
-  totalCost       Int
-  status          String   @default("PROCESSING")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  user   User    @relation(fields: [userId], references: [id])
-  orders Order[]
-
-  @@map("Batch")
-}
+// ===== PACKAGES =====
 
 model Package {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  points      Int
-  price       Float
-  isPopular   Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  features    String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  transactions Transaction[]
-
-  @@map("Package")
+  id                String   @id @default(cuid())
+  
+  // Package details
+  name              String
+  description       String?
+  credits           Float
+  price             Float
+  currency          String   @default("USD")
+  
+  // Features
+  features          String[] // Array of feature strings
+  
+  // Status
+  isActive          Boolean  @default(true)
+  isPopular         Boolean  @default(false)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  purchases         PackagePurchase[]
+  
+  @@index([isActive])
 }
 
+model PackagePurchase {
+  id                String   @id @default(cuid())
+  userId            String
+  packageId         String
+  
+  // Purchase details
+  creditsAdded      Float
+  amountPaid        Float
+  currency          String   @default("USD")
+  
+  // Payment info
+  paymentMethod     String?  // stripe, paypal, etc.
+  paymentId         String?  // External payment ID
+  paymentStatus     PaymentStatus @default(PENDING)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package           Package  @relation(fields: [packageId], references: [id])
+  
+  @@index([userId])
+  @@index([packageId])
+  @@index([paymentStatus])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ===== TRANSACTIONS =====
+
 model Transaction {
-  id             String   @id @default(uuid())
-  userId         String
-  packageId      String
-  amount         Float
-  pointsReceived Int
-  status         String   @default("pending")
-  paymentMethod  String?
-  paymentId      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(cuid())
+  userId            String
+  
+  // Transaction details
+  type              TransactionType
+  amount            Float
+  description       String
+  referenceId       String?  // Link to order or purchase
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
 
-  user    User    @relation(fields: [userId], references: [id])
-  package Package @relation(fields: [packageId], references: [id])
+enum TransactionType {
+  CREDIT_PURCHASE
+  CREDIT_DEDUCTION
+  REFUND
+  BONUS
+}
 
-  @@map("Transaction")
+// ===== ORDERS =====
+
+model Order {
+  id                String   @id @default(cuid())
+  userId            String
+  
+  // Order details
+  taskId            String   @unique  // NEHTW task_id
+  site              String
+  stockId           String
+  stockUrl          String?
+  
+  // Status
+  status            OrderStatus @default(PENDING)
+  progress          Int       @default(0)
+  
+  // Cost
+  cost              Float
+  
+  // Download info
+  downloadUrl       String?
+  expiresAt         DateTime?
+  downloadedAt      DateTime?
+  
+  // Error tracking
+  errorMessage      String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([taskId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  READY
+  DOWNLOADED
+  ERROR
+  EXPIRED
 }
