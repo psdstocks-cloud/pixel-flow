@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { Order } from '../../../../../lib/api';
 
 interface OrderCardProps {
@@ -52,6 +51,7 @@ export function OrderCard({ order, selected, onToggleSelect, showCheckbox }: Ord
 
         <div className="flex-1 min-w-0">
           {order.stockImage && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={order.stockImage}
               alt={order.stockTitle || 'Stock image'}
