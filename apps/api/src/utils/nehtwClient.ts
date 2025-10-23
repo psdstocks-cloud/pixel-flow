@@ -1,90 +1,90 @@
 import axios from 'axios';
 
+const NEHTW_API_KEY = process.env.NEHTW_API_KEY || 'A8K9bV5s2OX12E8cmS4I96mtmSNzv7';
 const NEHTW_BASE_URL = 'https://nehtw.com/api';
-const NEHTW_API_KEY = process.env.NEHTW_API_KEY;
 
-if (!NEHTW_API_KEY) {
-  console.error('⚠️ NEHTW_API_KEY not configured in environment variables');
+if (!process.env.NEHTW_API_KEY) {
+  console.warn('⚠️ NEHTW_API_KEY not set in environment, using fallback');
 }
 
-interface NehtwOrderRequest {
-  url: string;
-  responseType: string;
-}
+console.log('✅ nehtw API configured with key:', NEHTW_API_KEY.substring(0, 8) + '...');
 
-interface NehtwOrderResponse {
+export interface NehtwOrderResponse {
   success: boolean;
   task_id?: string;
-  error?: string;
+  error_message?: string;
   message?: string;
 }
 
-interface NehtwPollResponse {
+export interface NehtwPollResponse {
   success: boolean;
-  status: string;
+  status?: string;
   download_link?: string;
   file_name?: string;
   error_message?: string;
+  message?: string;
 }
 
-export class NehtwClient {
-  private apiKey: string;
-
-  constructor() {
-    if (!NEHTW_API_KEY) {
-      throw new Error('Nehtw API key not configured in environment variables');
-    }
-    this.apiKey = NEHTW_API_KEY;
-  }
-
+export const nehtwClient = {
   async createOrder(url: string, responseType: string = 'any'): Promise<NehtwOrderResponse> {
     try {
-      const response = await axios.post<NehtwOrderResponse>(
+      console.log('🚀 Creating nehtw order:', { url, responseType });
+      
+      const response = await axios.post(
         `${NEHTW_BASE_URL}/order`,
-        { url, responseType },
+        { url, response_type: responseType },
         {
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
+            'X-Api-Key': NEHTW_API_KEY,
             'Content-Type': 'application/json',
           },
-          timeout: 10000,
+          timeout: 30000, // 30 second timeout
         }
       );
-
+      
+      console.log('✅ nehtw order created:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('Nehtw order error:', error.response?.data || error.message);
+      console.error('❌ nehtw API error:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+      
       return {
         success: false,
-        error: error.response?.data?.error || error.message || 'Failed to create order',
+        error_message: error.response?.data?.message || error.response?.data?.error || error.message,
       };
     }
-  }
+  },
 
   async pollOrder(taskId: string): Promise<NehtwPollResponse> {
     try {
-      const response = await axios.post<NehtwPollResponse>(
-        `${NEHTW_BASE_URL}/poll`,
-        { task_id: taskId },
+      console.log('🔍 Polling nehtw order:', taskId);
+      
+      const response = await axios.get(
+        `${NEHTW_BASE_URL}/order/${taskId}`,
         {
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
+            'X-Api-Key': NEHTW_API_KEY,
           },
-          timeout: 10000,
+          timeout: 30000,
         }
       );
-
+      
+      console.log('📊 nehtw poll result:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('Nehtw poll error:', error.response?.data || error.message);
+      console.error('❌ nehtw poll error:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+      
       return {
         success: false,
-        status: 'error',
-        error_message: error.response?.data?.error || error.message || 'Failed to poll order',
+        error_message: error.response?.data?.message || error.response?.data?.error || error.message,
       };
     }
-  }
-}
-
-export const nehtwClient = new NehtwClient();
+  },
+};
