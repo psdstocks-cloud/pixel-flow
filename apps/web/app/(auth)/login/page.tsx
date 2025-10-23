@@ -32,8 +32,9 @@ export default function LoginPage() {
       if (data.session) {
         router.push('/dashboard');
       }
-    } catch (err: any) {
-      setError(err.message || 'Invalid email or password');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Invalid email or password'
+      setError(message)
     } finally {
       setLoading(false);
     }
@@ -119,7 +120,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-6 text-center text-sm text-gray-300">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-purple-400 hover:text-purple-300 font-medium">
               Sign up
             </Link>
