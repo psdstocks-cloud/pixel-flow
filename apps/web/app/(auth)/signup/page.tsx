@@ -51,8 +51,9 @@ export default function SignupPage() {
       if (data.user) {
         router.push('/verify-email');
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during signup');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An error occurred during signup'
+      setError(message)
     } finally {
       setLoading(false);
     }
