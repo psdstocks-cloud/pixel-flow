@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@pixel-flow/database';
+import { PrismaClient } from '@pixel-flow/database';
+const prisma = new PrismaClient();
 
 const router = Router();
 

@@ -1,3 +1,3 @@
-import { prisma } from '@pixel-flow/database'
+import { PrismaClient } from '@pixel-flow/database';
 
-export default prisma
+export const prisma = new PrismaClient();
