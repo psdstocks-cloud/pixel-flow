@@ -1,0 +1,35 @@
+### Health Check
+GET http://localhost:3001/health
+
+### Get Stock Sites (requires auth)
+GET http://localhost:3001/api/stock-sites
+x-user-id: your-user-id-here
+
+### Get Cached Stock Sites
+GET http://localhost:3001/api/stock-sites/cached
+x-user-id: your-user-id-here
+
+### Create Batch Order
+POST http://localhost:3001/api/orders/batch
+Content-Type: application/json
+x-user-id: your-user-id-here
+
+{
+  "urls": [
+    "https://stock.adobe.com/images/123456",
+    "https://www.shutterstock.com/image-photo/test-789012"
+  ],
+  "responseType": "any"
+}
+
+### Poll Order Status
+POST http://localhost:3001/api/orders/test_task_123/poll
+x-user-id: your-user-id-here
+
+### Get Batch Status
+GET http://localhost:3001/api/batches/batch_id_here
+x-user-id: your-user-id-here
+
+### Get Order History
+GET http://localhost:3001/api/orders?page=1&limit=10
+x-user-id: your-user-id-here
