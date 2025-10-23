@@ -13,7 +13,7 @@ interface Package {
   features: string[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pixel-flow-api-production.up.railway.app';
 const USER_ID = 'cm2rb9yio00008il2t2x91euo'; // Hardcoded for now
 
 export default function PricingPage() {
