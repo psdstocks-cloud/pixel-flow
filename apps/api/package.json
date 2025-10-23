@@ -6,8 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "lint": "eslint . --ext .ts"
-  },
+    "lint": "eslint ."  },
   "dependencies": {
     "@pixel-flow/database": "*",
     "axios": "^1.12.2",
