@@ -46,7 +46,11 @@ export interface Batch {
 class APIClient {
   private userId: string;
 
-  constructor(userId = 'test-user-id') {
+  constructor(userId = 'cmh2r96870000lyp4k4dist2s') {
+    this.userId = userId;
+  }
+
+  setUserId(userId: string) {
     this.userId = userId;
   }
 
