@@ -1,3 +1,5 @@
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 # Multi-stage build for Railway deployment
 FROM node:22-slim AS base
 
@@ -22,6 +24,8 @@ COPY apps/web ./apps/web
 # Install dependencies (postinstall will run prisma generate + build)
 RUN npm ci
 
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 # Build all packages and remove dev node_modules afterwards to keep image light
 RUN npm run build && rm -rf node_modules
 

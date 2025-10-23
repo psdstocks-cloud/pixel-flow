@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { Card } from '../../../components'
 
 export default function AccountInsightsPage() {

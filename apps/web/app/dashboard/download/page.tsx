@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 /* eslint-disable @next/next/no-img-element */
 'use client';
 
