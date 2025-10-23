@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -43,10 +44,7 @@ export default function SignupPage() {
       if (signupError) throw signupError;
 
       if (data?.user) {
-        // Store email for verification page
         localStorage.setItem('pending-email', email);
-        
-        // Redirect to verify email page
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       }
     } catch (err: any) {
@@ -119,7 +117,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition disabled:opacity-50"
             >
               {loading ? 'Creating Account...' : 'Create Account'}
             </button>
