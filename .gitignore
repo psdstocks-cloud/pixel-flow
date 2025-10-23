@@ -25,3 +25,5 @@ logs
 
 # Prisma
 prisma/*.db
+# Turborepo cache
+.turbo/
