@@ -77,7 +77,7 @@ export default function ContactPage() {
         message: '',
       });
       setFile(null);
-    } catch (error) {
+    } catch {
       alert('Failed to send message. Please try again.');
     } finally {
       setLoading(false);
