@@ -3,36 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "verify-user": "ts-node-dev src/scripts/verify-user.ts"
+    "lint": "eslint . --ext .ts"
   },
   "dependencies": {
-    "@pixel-flow/database": "*",
-    "@prisma/client": "5.22.0",
+    "express": "^4.18.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "morgan": "^1.10.0",
-    "undici": "^7.16.0",
-    "zod": "^3.23.8"
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.2",
+    "@pixel-flow/database": "*"
   },
   "devDependencies": {
-    "@eslint/js": "^8.57.1",
-    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
-    "@types/morgan": "^1.9.9",
-    "eslint": "^8.57.1",
-    "eslint-plugin-react": "^7.37.5",
-    "globals": "^13.24.0",
-    "prisma": "5.22.0",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.10.0",
     "typescript": "^5.4.5",
-    "typescript-eslint": "^8.46.1"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "typescript-eslint": "^8.46.1",
+    "tsx": "^4.7.0"
   }
 }
