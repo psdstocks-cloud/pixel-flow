@@ -1,21 +1,19 @@
-import './globals.css'
-import { AppProviders } from './providers'
-import { getRequestLocale, getLocaleDirection } from '../lib/i18n/request'
-import { loadShellMessages } from '../lib/i18n/shell'
-import { LandingHeader } from '../components/LandingHeader'
-import { UserProvider } from './providers/UserProvider';
+import type { Metadata } from "next";
+import "./globals.css";
 
-export const metadata = {
-  title: 'Pixel Flow',
-  description: 'Stock images, AI generation, and design tools',
-}
+export const metadata: Metadata = {
+  title: "Pixel Flow",
+  description: "Stock media downloader",
+};
 
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <SessionProvider>
-      <UserProvider>
-        {children}
-      </UserProvider>
-    </SessionProvider>
+    <html lang="en">
+      <body>{children}</body>
+    </html>
   );
 }

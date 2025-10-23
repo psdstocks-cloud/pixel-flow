@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@pixel-flow/database';
 import { nehtwClient } from '../utils/nehtwClient';
-import { parseStockUrl } from '../utils/stockUrlParser';
+import { parseStockURL } from '../utils/stockUrlParser';
 
 const router = Router();
 
-// Create batch order
 router.post('/batch', async (req: Request, res: Response) => {
   try {
     const { urls, responseType = 'any' } = req.body;
@@ -23,23 +22,22 @@ router.post('/batch', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Maximum 5 URLs per batch' });
     }
 
-    // Get user
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // Parse URLs and get stock sites
-    const parsedUrls = urls.map(url => parseStockUrl(url)).filter(Boolean);
+    const parsedUrls = urls
+      .map(url => parseStockURL(url))
+      .filter((parsed): parsed is NonNullable<typeof parsed> => parsed !== null);
+
     if (parsedUrls.length === 0) {
       return res.status(400).json({ success: false, error: 'No valid stock URLs provided' });
     }
 
-    // Get stock sites from database
     const stockSites = await prisma.stockSite.findMany();
     const stockSiteMap = new Map(stockSites.map(site => [site.name.toLowerCase(), site]));
 
-    // Calculate total cost
     let totalCost = 0;
     for (const parsed of parsedUrls) {
       const site = stockSiteMap.get(parsed.site.toLowerCase());
@@ -48,7 +46,6 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Check user balance
     if (user.balance < totalCost) {
       return res.status(400).json({
         success: false,
@@ -58,7 +55,6 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     }
 
-    // Create batch
     const batch = await prisma.batch.create({
       data: {
         userId,
@@ -68,7 +64,6 @@ router.post('/batch', async (req: Request, res: Response) => {
       },
     });
 
-    // Create orders and send to Nehtw
     const orders = [];
     const failedUrls = [];
 
@@ -79,7 +74,6 @@ router.post('/batch', async (req: Request, res: Response) => {
         continue;
       }
 
-      // Create order in Nehtw
       const nehtwResponse = await nehtwClient.createOrder(parsed.url, responseType);
 
       if (!nehtwResponse.success || !nehtwResponse.task_id) {
@@ -87,14 +81,13 @@ router.post('/batch', async (req: Request, res: Response) => {
         continue;
       }
 
-      // Create order in database
       const order = await prisma.order.create({
         data: {
           userId,
           batchId: batch.id,
           taskId: nehtwResponse.task_id,
           site: parsed.site,
-          stockId: parsed.stockId,
+          stockId: parsed.id,
           stockUrl: parsed.url,
           status: 'PROCESSING',
           cost: site.price,
@@ -104,7 +97,6 @@ router.post('/batch', async (req: Request, res: Response) => {
       orders.push(order);
     }
 
-    // Update batch
     await prisma.batch.update({
       where: { id: batch.id },
       data: {
@@ -113,7 +105,6 @@ router.post('/batch', async (req: Request, res: Response) => {
       },
     });
 
-    // Deduct balance
     if (orders.length > 0) {
       await prisma.user.update({
         where: { id: userId },
@@ -135,7 +126,6 @@ router.post('/batch', async (req: Request, res: Response) => {
   }
 });
 
-// Poll order status
 router.post('/:taskId/poll', async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params;
@@ -145,7 +135,6 @@ router.post('/:taskId/poll', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'User ID required' });
     }
 
-    // Get order from database
     const order = await prisma.order.findFirst({
       where: { taskId, userId },
     });
@@ -154,15 +143,12 @@ router.post('/:taskId/poll', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
-    // If already completed, return cached data
     if (order.status === 'COMPLETED' || order.status === 'ERROR' || order.status === 'TIMEOUT') {
       return res.json({ success: true, order, status: order.status });
     }
 
-    // Poll Nehtw API
     const nehtwResponse = await nehtwClient.pollOrder(taskId);
 
-    // Update order based on response
     let updateData: any = {
       retryCount: { increment: 1 },
     };
@@ -183,7 +169,6 @@ router.post('/:taskId/poll', async (req: Request, res: Response) => {
       updateData.errorMessage = nehtwResponse.error_message || 'Polling failed';
     }
 
-    // Check for timeout (60 retries = 3 minutes at 3-second intervals)
     if (order.retryCount >= 60 && updateData.status !== 'COMPLETED') {
       updateData.status = 'TIMEOUT';
       updateData.errorMessage = 'Order timed out after 3 minutes';
@@ -201,7 +186,6 @@ router.post('/:taskId/poll', async (req: Request, res: Response) => {
   }
 });
 
-// Get batch status
 router.get('/batches/:batchId', async (req: Request, res: Response) => {
   try {
     const { batchId } = req.params;
@@ -220,7 +204,6 @@ router.get('/batches/:batchId', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Batch not found' });
     }
 
-    // Calculate stats
     const stats = {
       total: batch.orders.length,
       completed: batch.orders.filter(o => o.status === 'COMPLETED').length,
@@ -228,7 +211,6 @@ router.get('/batches/:batchId', async (req: Request, res: Response) => {
       processing: batch.orders.filter(o => ['PROCESSING', 'READY', 'DOWNLOADING'].includes(o.status)).length,
     };
 
-    // Update batch status
     let batchStatus = batch.status;
     if (stats.processing === 0) {
       if (stats.failed === stats.total) {
@@ -263,7 +245,6 @@ router.get('/batches/:batchId', async (req: Request, res: Response) => {
   }
 });
 
-// Get user orders
 router.get('/', async (req: Request, res: Response) => {
   try {
     const userId = req.headers['x-user-id'] as string;
