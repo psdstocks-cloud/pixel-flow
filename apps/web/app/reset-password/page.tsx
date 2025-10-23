@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -39,11 +40,7 @@ export default function ResetPasswordPage() {
       if (updateError) throw updateError;
 
       setSuccess(true);
-      
-      // Redirect to login after 3 seconds
-      setTimeout(() => {
-        router.push('/login');
-      }, 3000);
+      setTimeout(() => router.push('/login'), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to update password');
     } finally {
@@ -54,13 +51,11 @@ export default function ResetPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-black p-4">
       <div className="w-full max-w-md">
-        {/* Logo/Brand */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Pixel Flow</h1>
           <p className="text-gray-300">Set your new password</p>
         </div>
 
-        {/* Form */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
           {!success ? (
             <form onSubmit={handleUpdatePassword} className="space-y-6">
@@ -81,7 +76,7 @@ export default function ResetPasswordPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-200 mb-2">
-                  Confirm New Password
+                  Confirm Password
                 </label>
                 <input
                   type="password"
@@ -103,7 +98,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition disabled:opacity-50"
               >
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
@@ -115,21 +110,15 @@ export default function ResetPasswordPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-white font-medium text-lg">Password Updated!</p>
-              <p className="text-sm text-gray-300">
-                Redirecting you to login...
-              </p>
+              <p className="text-white font-medium">Password Updated!</p>
+              <p className="text-sm text-gray-300">Redirecting...</p>
             </div>
           )}
         </div>
 
-        {/* Back to Login */}
         {!success && (
           <div className="mt-6 text-center">
-            <Link 
-              href="/login" 
-              className="text-sm text-purple-400 hover:text-purple-300 transition"
-            >
+            <Link href="/login" className="text-sm text-purple-400 hover:text-purple-300">
               Back to Login
             </Link>
           </div>
