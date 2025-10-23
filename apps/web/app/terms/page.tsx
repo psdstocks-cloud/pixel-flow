@@ -26,14 +26,14 @@ export default function TermsOfServicePage() {
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-white mb-4">1. Agreement to Terms</h2>
               <p className="text-gray-300 leading-relaxed mb-4">
-                By accessing and using Pixel Flow ("Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
+                By accessing and using Pixel Flow (&quot;Service&quot;), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
               </p>
             </section>
 
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-white mb-4">2. Use License</h2>
               <p className="text-gray-300 leading-relaxed mb-4">
-                Permission is granted to temporarily download one copy of the materials on Pixel Flow's website for personal, non-commercial transitory viewing only. This is the grant of a license, not a transfer of title.
+                Permission is granted to temporarily download one copy of the materials on Pixel Flow&apos;s website for personal, non-commercial transitory viewing only. This is the grant of a license, not a transfer of title.
               </p>
               <p className="text-gray-300 leading-relaxed">
                 Under this license you may not:
@@ -41,7 +41,7 @@ export default function TermsOfServicePage() {
               <ul className="list-disc list-inside text-gray-300 space-y-2 my-4">
                 <li>Modify or copy the materials</li>
                 <li>Use the materials for any commercial purpose or for any public display</li>
-                <li>Attempt to reverse engineer any software contained on Pixel Flow's website</li>
+                <li>Attempt to reverse engineer any software contained on Pixel Flow&apos;s website</li>
                 <li>Remove any copyright or other proprietary notations from the materials</li>
                 <li>Transfer the materials to another person or "mirror" the materials on any other server</li>
               </ul>
@@ -91,7 +91,7 @@ export default function TermsOfServicePage() {
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-white mb-4">7. Limitation of Liability</h2>
               <p className="text-gray-300 leading-relaxed">
-                In no event shall Pixel Flow or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the materials on Pixel Flow's website.
+                In no event shall Pixel Flow or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the materials on Pixel Flow&apos;s website.
               </p>
             </section>
 

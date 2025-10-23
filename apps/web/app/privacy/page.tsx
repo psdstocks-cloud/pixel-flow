@@ -111,7 +111,7 @@ export default function PrivacyPolicyPage() {
             </section>
 
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-white mb-4">8. Children's Privacy</h2>
+              <h2 className="text-2xl font-semibold text-white mb-4">8. Children&apos;s Privacy</h2>
               <p className="text-gray-300 leading-relaxed">
                 Our service is not directed to children under 13. We do not knowingly collect personal information from children under 13. If you become aware that a child has provided us with personal information, please contact us.
               </p>
@@ -127,7 +127,7 @@ export default function PrivacyPolicyPage() {
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-white mb-4">10. Changes to This Policy</h2>
               <p className="text-gray-300 leading-relaxed">
-                We may update this privacy policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the "Last updated" date.
+                We may update this privacy policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the &quot;Last updated&quot; date.
               </p>
             </section>
 
