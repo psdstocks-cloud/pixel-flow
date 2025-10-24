@@ -38,6 +38,7 @@ interface StockSite {
 const NEHTW_API_KEY = 'A8K9bV5s2OX12E8cmS4I96mtmSNzv7';
 const NEHTW_BASE_URL = 'https://nehtw.com/api';
 const CREDITS_PER_DOWNLOAD = 2;
+const MAX_URLS = 5;
 
 const SITE_URLS: Record<string, string> = {
   shutterstock: 'https://www.shutterstock.com',
@@ -66,6 +67,12 @@ export default function OrderV2Page() {
   const [userId, setUserId] = useState<string | null>(null);
   const [showAllSites, setShowAllSites] = useState(false);
   const supabase = createClient();
+
+  // Count URLs in textarea
+  const urlCount = urls
+    .split('\n')
+    .map(u => u.trim())
+    .filter(u => u.length > 0).length;
 
   const fetchUserData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -267,19 +274,35 @@ export default function OrderV2Page() {
     const urlList = urls
       .split('\n')
       .map(u => u.trim())
-      .filter(u => u.length > 0)
-      .slice(0, 5);
+      .filter(u => u.length > 0);
 
     if (urlList.length === 0) return;
+
+    if (urlList.length > MAX_URLS) {
+      alert(`Maximum ${MAX_URLS} URLs allowed. Only the first ${MAX_URLS} will be processed.`);
+    }
+
+    // Remove duplicates and limit to MAX_URLS
+    const uniqueUrls = Array.from(new Set(urlList)).slice(0, MAX_URLS);
 
     setLoading(true);
 
     const newOrders: Order[] = [];
-    for (const url of urlList) {
+    for (const url of uniqueUrls) {
+      // Check if this URL is already in orders
+      const existingOrder = orders.find(o => o.url === url);
+      if (existingOrder) {
+        continue; // Skip duplicates
+      }
+
       const order = await createPreviewOrder(url);
       if (order) {
         newOrders.push(order);
       }
+    }
+
+    if (newOrders.length === 0 && uniqueUrls.length > 0) {
+      alert('All URLs are either invalid or already added.');
     }
 
     setOrders(prev => [...prev, ...newOrders]);
@@ -368,188 +391,201 @@ export default function OrderV2Page() {
   const displayedSites = showAllSites ? activeSites : activeSites.slice(0, 4);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* NEW UNIFIED HEADER WITH PROMINENT BALANCE */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Stock Order</h1>
-            <p className="text-white/60">Download premium stock images with credits</p>
-          </div>
-          
-          {/* SINGLE PROMINENT BALANCE DISPLAY */}
-          <div className="backdrop-blur-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-400/30 rounded-2xl px-8 py-4">
-            <div className="text-white/70 text-sm mb-1">Your Balance</div>
-            <div className="flex items-center gap-2">
-              <span className="text-4xl font-bold text-green-400">{userBalance}</span>
-              <span className="text-white/90 text-xl">Credits</span>
-            </div>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* COMPACT HEADER WITH SINGLE BALANCE */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">Stock Order</h1>
+          <p className="text-white/60">Download premium stock images with credits</p>
+        </div>
+        
+        {/* SINGLE PROMINENT BALANCE DISPLAY */}
+        <div className="backdrop-blur-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-400/30 rounded-2xl px-8 py-4">
+          <div className="text-white/70 text-sm mb-1">Your Balance</div>
+          <div className="flex items-center gap-2">
+            <span className="text-4xl font-bold text-green-400">{userBalance}</span>
+            <span className="text-white/90 text-xl">Credits</span>
           </div>
         </div>
+      </div>
 
-        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white/90 font-semibold text-lg">
-              Supported Stock Sites ({activeSites.length})
-            </h2>
-            <span className="text-yellow-400 font-semibold text-sm">
-              {CREDITS_PER_DOWNLOAD} Credits per download
-            </span>
-          </div>
+      {/* Supported Sites */}
+      <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-white/90 font-semibold text-lg">
+            Supported Stock Sites ({activeSites.length})
+          </h2>
+          <span className="text-yellow-400 font-semibold text-sm">
+            {CREDITS_PER_DOWNLOAD} Credits per download
+          </span>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {displayedSites.map(([key]) => (
+            <a
+              key={key}
+              href={SITE_URLS[key] || `https://${key}.com`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-white/10 rounded-full transition-all duration-200 flex items-center gap-2"
+            >
+              <span className="w-2 h-2 bg-green-400 rounded-full group-hover:animate-pulse"></span>
+              <span className="text-white/90 text-sm font-medium capitalize">{key}</span>
+              <svg className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          ))}
           
-          <div className="flex flex-wrap gap-2">
-            {displayedSites.map(([key]) => (
-              <a
-                key={key}
-                href={SITE_URLS[key] || `https://${key}.com`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-white/10 rounded-full transition-all duration-200 flex items-center gap-2"
-              >
-                <span className="w-2 h-2 bg-green-400 rounded-full group-hover:animate-pulse"></span>
-                <span className="text-white/90 text-sm font-medium capitalize">{key}</span>
-                <svg className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-            ))}
-            
-            {activeSites.length > 4 && (
-              <button
-                onClick={() => setShowAllSites(!showAllSites)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all duration-200"
-              >
-                <span className="text-white/70 text-sm">
-                  {showAllSites ? 'Show Less' : `+${activeSites.length - 4} More`}
-                </span>
-              </button>
+          {activeSites.length > 4 && (
+            <button
+              onClick={() => setShowAllSites(!showAllSites)}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all duration-200"
+            >
+              <span className="text-white/70 text-sm">
+                {showAllSites ? 'Show Less' : `+${activeSites.length - 4} More`}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* URL Input with Counter */}
+      <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <label className="text-white/90 font-semibold">
+            Paste Stock URLs (one per line)
+          </label>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${urlCount > MAX_URLS ? 'text-red-400' : 'text-white/70'}`}>
+              {urlCount}/{MAX_URLS} URLs
+            </span>
+            {urlCount > MAX_URLS && (
+              <span className="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-xs">
+                Limit exceeded
+              </span>
             )}
           </div>
         </div>
-
-        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
-          <label className="block text-white/90 font-semibold mb-3">
-            Paste Stock URLs (one per line, max 5)
-          </label>
-          <textarea
-            value={urls}
-            onChange={(e) => setUrls(e.target.value)}
-            placeholder="https://www.shutterstock.com/image-vector/heart-logo-2365327491"
-            className="w-full h-32 px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-purple-500 resize-none"
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !urls.trim()}
-            className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {loading ? 'Loading Previews...' : 'Get Previews'}
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <div
-              key={order.id}
-              className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-xl p-6"
-            >
-              {order.status === 'preview' && order.stockInfo && (
-                <div className="flex gap-6">
-                  <img
-                    src={order.stockInfo.image}
-                    alt={order.stockInfo.title}
-                    className="w-48 h-48 object-cover rounded-lg border border-white/20"
-                  />
-                  
-                  <div className="flex-1">
-                    <h3 className="text-white font-semibold text-lg mb-2">
-                      {order.stockInfo.title}
-                    </h3>
-                    <div className="space-y-2 text-white/70 text-sm">
-                      <p>
-                        <span className="text-white/50">Source:</span>{' '}
-                        <span className="capitalize">{order.stockInfo.source}</span>
-                      </p>
-                      <p>
-                        <span className="text-white/50">ID:</span> {order.stockInfo.id}
-                      </p>
-                      {order.stockInfo.author && (
-                        <p>
-                          <span className="text-white/50">Author:</span> {order.stockInfo.author}
-                        </p>
-                      )}
-                      <p className="text-lg font-semibold text-yellow-300">
-                        Cost: {CREDITS_PER_DOWNLOAD} Credits
-                      </p>
-                    </div>
-                    
-                    <button
-                      onClick={() => confirmOrder(order)}
-                      disabled={userBalance < CREDITS_PER_DOWNLOAD}
-                      className="mt-4 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      {userBalance < CREDITS_PER_DOWNLOAD
-                        ? 'Insufficient Credits'
-                        : `Confirm Order (${CREDITS_PER_DOWNLOAD} Credits)`}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {order.status !== 'preview' && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex-1">
-                      {order.stockInfo && (
-                        <p className="text-white/90 font-medium">{order.stockInfo.title}</p>
-                      )}
-                    </div>
-                    <div className="ml-4">
-                      {order.status === 'pending' && (
-                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">
-                          Pending
-                        </span>
-                      )}
-                      {order.status === 'processing' && (
-                        <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm flex items-center gap-2">
-                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Processing
-                        </span>
-                      )}
-                      {order.status === 'ready' && (
-                        <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">
-                          Ready
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {order.downloadUrl && (
-                    <a
-                      href={order.downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block mt-3 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold rounded-lg transition-all"
-                    >
-                      📥 Download File
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {orders.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-white/40 text-lg">
-              No orders yet. Paste URLs above to get started.
-            </p>
-          </div>
-        )}
+        <textarea
+          value={urls}
+          onChange={(e) => setUrls(e.target.value)}
+          placeholder="https://www.shutterstock.com/image-vector/heart-logo-2365327491&#10;https://www.dreamstime.com/plant-root-system-image377059337"
+          className="w-full h-32 px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-purple-500 resize-none"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={loading || !urls.trim() || urlCount === 0}
+          className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+          {loading ? 'Loading Previews...' : 'Get Previews'}
+        </button>
       </div>
+
+      {/* Orders List */}
+      <div className="space-y-4">
+        {orders.map((order) => (
+          <div
+            key={order.id}
+            className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-xl p-6"
+          >
+            {order.status === 'preview' && order.stockInfo && (
+              <div className="flex gap-6">
+                <img
+                  src={order.stockInfo.image}
+                  alt={order.stockInfo.title}
+                  className="w-48 h-48 object-cover rounded-lg border border-white/20"
+                />
+                
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold text-lg mb-2">
+                    {order.stockInfo.title}
+                  </h3>
+                  <div className="space-y-2 text-white/70 text-sm">
+                    <p>
+                      <span className="text-white/50">Source:</span>{' '}
+                      <span className="capitalize">{order.stockInfo.source}</span>
+                    </p>
+                    <p>
+                      <span className="text-white/50">ID:</span> {order.stockInfo.id}
+                    </p>
+                    {order.stockInfo.author && (
+                      <p>
+                        <span className="text-white/50">Author:</span> {order.stockInfo.author}
+                      </p>
+                    )}
+                    <p className="text-lg font-semibold text-yellow-300">
+                      Cost: {CREDITS_PER_DOWNLOAD} Credits
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={() => confirmOrder(order)}
+                    disabled={userBalance < CREDITS_PER_DOWNLOAD}
+                    className="mt-4 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {userBalance < CREDITS_PER_DOWNLOAD
+                      ? 'Insufficient Credits'
+                      : `Confirm Order (${CREDITS_PER_DOWNLOAD} Credits)`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {order.status !== 'preview' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1">
+                    {order.stockInfo && (
+                      <p className="text-white/90 font-medium">{order.stockInfo.title}</p>
+                    )}
+                  </div>
+                  <div className="ml-4">
+                    {order.status === 'pending' && (
+                      <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-sm">
+                        Pending
+                      </span>
+                    )}
+                    {order.status === 'processing' && (
+                      <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Processing
+                      </span>
+                    )}
+                    {order.status === 'ready' && (
+                      <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">
+                        Ready
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {order.downloadUrl && (
+                  <a
+                    href={order.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-3 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold rounded-lg transition-all"
+                  >
+                    📥 Download File
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {orders.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-white/40 text-lg">
+            No orders yet. Paste URLs above to get started.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
