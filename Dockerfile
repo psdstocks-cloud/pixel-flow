@@ -71,3 +71,4 @@ EXPOSE 4000
 
 # Start the API server
 CMD ["npm", "run", "start", "--workspace", "api"]
+CMD ["node", "apps/api/dist/index.js"]
