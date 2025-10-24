@@ -6,7 +6,8 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/context/AuthContext'
+// ❌ Remove this line:
+// import { useAuth } from '@/context/AuthContext'
 
 interface SessionExpiryWarningProps {
   show: boolean
