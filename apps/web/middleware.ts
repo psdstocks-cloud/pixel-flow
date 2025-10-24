@@ -55,6 +55,55 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
+  // ============================================
+  // SECURITY HEADERS - XSS & DATA EXFILTRATION PROTECTION
+  // ============================================
+
+  // Content Security Policy (CSP) - Prevents XSS attacks
+  const cspHeader = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com https://www.googletagmanager.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: https: blob:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://apis.google.com",
+    "frame-src 'self' https://accounts.google.com",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests"
+  ].join('; ')
+
+  supabaseResponse.headers.set('Content-Security-Policy', cspHeader)
+
+  // X-Frame-Options - Prevents clickjacking attacks
+  supabaseResponse.headers.set('X-Frame-Options', 'DENY')
+
+  // X-Content-Type-Options - Prevents MIME sniffing
+  supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
+
+  // X-XSS-Protection - Legacy XSS protection (for older browsers)
+  supabaseResponse.headers.set('X-XSS-Protection', '1; mode=block')
+
+  // Referrer-Policy - Controls referrer information
+  supabaseResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+
+  // Permissions-Policy - Restricts browser features
+  supabaseResponse.headers.set(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), interest-cohort=()'
+  )
+
+  // Strict-Transport-Security (HSTS) - Forces HTTPS
+  // Only add in production (Vercel handles this automatically)
+  if (process.env.NODE_ENV === 'production') {
+    supabaseResponse.headers.set(
+      'Strict-Transport-Security',
+      'max-age=63072000; includeSubDomains; preload'
+    )
+  }
+
   return supabaseResponse
 }
 
