@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -37,7 +37,7 @@ export default function PaymentPage() {
       user_id: user.id,
       plan: plan,
       status: 'active',
-      credits: credits / cycle, // Monthly credits
+      credits: credits / cycle,
       billing_cycle: cycle,
       monthly_price: monthlyPrice,
       total_price: totalPrice,
