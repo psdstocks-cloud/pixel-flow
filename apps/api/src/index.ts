@@ -12,28 +12,72 @@ const app = express()
 // SECURITY MIDDLEWARE
 // ============================================
 
+// Helmet - Security headers
 app.use(helmet())
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
-}))
-// Rate limiting - inline to avoid TypeScript issues
-// Rate limiting - type assertion for TypeScript compatibility
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: 'Too many requests from this IP, please try again later'
-}) as any)
 
+// Enhanced CORS Configuration - SECURE
+const allowedOrigins = [
+  'https://pixel-flow.vercel.app',                    // Production
+  'https://pixel-flow-staging.vercel.app',            // Staging (if you have one)
+  process.env.FRONTEND_URL,                            // Dynamic from env
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,  // Local dev
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : null   // Local API testing
+].filter(Boolean) as string[]
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, curl)
+    if (!origin) {
+      return callback(null, true)
+    }
+    
+    // Check if origin is in whitelist
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      console.warn(`🚫 CORS blocked request from: ${origin}`)
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true,                                  // Allow cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
+  maxAge: 86400                                       // Cache preflight for 24 hours
+}))
 
 // Body parsing
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // ============================================
-// HEALTH CHECK ENDPOINTS
+// RATE LIMITING
+// ============================================
 
-app.use(express.urlencoded({ extended: true }))
+// Strict rate limiter for authentication endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,                    // 5 attempts for auth endpoints
+  skipSuccessfulRequests: true,
+  message: {
+    error: 'Too many login attempts. Please try again in 15 minutes.',
+    retryAfter: 15 * 60
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+}) as any  // Type assertion to bypass Express type conflicts
+
+// General API rate limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // 100 requests for general API
+  message: {
+    error: 'Too many requests from this IP, please try again later',
+    retryAfter: 15 * 60
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+}) as any  // Type assertion to bypass Express type conflicts
 
 // ============================================
 // HEALTH CHECK ENDPOINTS
@@ -57,17 +101,17 @@ app.get('/health', (req, res) => {
 })
 
 // ============================================
-// PAYMENT ROUTES
+// PAYMENT ROUTES (with rate limiting)
 // ============================================
 
-app.use('/api/payments', paymentsRouter)
+app.use('/api/payments', apiLimiter, paymentsRouter)
 
 // ============================================
-// USER ROUTES
+// USER ROUTES (with rate limiting)
 // ============================================
 
 // Get user profile
-app.get('/api/user/profile', requireAuth, async (req, res) => {
+app.get('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
   try {
     const profile = await prisma.profile.findUnique({
       where: { id: req.user!.id },
@@ -93,7 +137,7 @@ app.get('/api/user/profile', requireAuth, async (req, res) => {
 })
 
 // Update user profile
-app.put('/api/user/profile', requireAuth, async (req, res) => {
+app.put('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
   try {
     const { fullName, avatarUrl } = req.body
 
@@ -113,7 +157,7 @@ app.put('/api/user/profile', requireAuth, async (req, res) => {
 })
 
 // Get user orders
-app.get('/api/orders', requireAuth, async (req, res) => {
+app.get('/api/orders', apiLimiter, requireAuth, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       where: { userId: req.user!.id },
@@ -139,7 +183,7 @@ app.get('/api/orders', requireAuth, async (req, res) => {
 })
 
 // Get user downloads
-app.get('/api/downloads', requireAuth, async (req, res) => {
+app.get('/api/downloads', apiLimiter, requireAuth, async (req, res) => {
   try {
     const downloads = await prisma.download.findMany({
       where: { 
@@ -167,7 +211,7 @@ app.get('/api/downloads', requireAuth, async (req, res) => {
 })
 
 // Get user transactions
-app.get('/api/transactions', requireAuth, async (req, res) => {
+app.get('/api/transactions', apiLimiter, requireAuth, async (req, res) => {
   try {
     const transactions = await prisma.transaction.findMany({
       where: { userId: req.user!.id },
@@ -187,7 +231,7 @@ app.get('/api/transactions', requireAuth, async (req, res) => {
 // ============================================
 
 // Get all active packages
-app.get('/api/packages', async (req, res) => {
+app.get('/api/packages', apiLimiter, async (req, res) => {
   try {
     const packages = await prisma.package.findMany({
       where: { isActive: true },
@@ -209,7 +253,7 @@ app.get('/api/packages', async (req, res) => {
 // ============================================
 
 // Get all assets (public catalog)
-app.get('/api/assets', async (req, res) => {
+app.get('/api/assets', apiLimiter, async (req, res) => {
   try {
     const { category, search, page = '1', limit = '20' } = req.query
 
@@ -269,7 +313,7 @@ app.get('/api/assets', async (req, res) => {
 })
 
 // Get single asset
-app.get('/api/assets/:id', async (req, res) => {
+app.get('/api/assets/:id', apiLimiter, async (req, res) => {
   try {
     const asset = await prisma.asset.findUnique({
       where: { id: req.params.id },
@@ -296,11 +340,11 @@ app.get('/api/assets/:id', async (req, res) => {
 })
 
 // ============================================
-// ADMIN ROUTES
+// ADMIN ROUTES (with strict auth rate limiting)
 // ============================================
 
 // Get all users (admin only)
-app.get('/api/admin/users', requireAuth, requireRole(['admin']), async (req, res) => {
+app.get('/api/admin/users', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const users = await prisma.profile.findMany({
       select: {
@@ -331,7 +375,7 @@ app.get('/api/admin/users', requireAuth, requireRole(['admin']), async (req, res
 })
 
 // Get all orders (admin only)
-app.get('/api/admin/orders', requireAuth, requireRole(['admin']), async (req, res) => {
+app.get('/api/admin/orders', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       include: {
@@ -361,7 +405,7 @@ app.get('/api/admin/orders', requireAuth, requireRole(['admin']), async (req, re
 })
 
 // Update user role (admin only)
-app.put('/api/admin/users/:id/role', requireAuth, requireRole(['admin']), async (req, res) => {
+app.put('/api/admin/users/:id/role', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const { role } = req.body
 
@@ -390,13 +434,32 @@ app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
     path: req.path,
+    method: req.method,
     timestamp: new Date().toISOString(),
   })
 })
 
 // Global error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Unhandled error:', err)
+  // Log error server-side
+  console.error('Unhandled error:', {
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    url: req.url,
+    method: req.method,
+    ip: req.ip
+  })
+
+  // CORS errors
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ 
+      error: 'CORS Error',
+      message: 'Origin not allowed. Please contact support.',
+      allowedOrigins: process.env.NODE_ENV === 'development' ? allowedOrigins : undefined
+    })
+  }
+
+  // Generic error response (never expose internal errors in production)
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -407,16 +470,26 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 // START SERVER
 // ============================================
 
-
 const PORT = Number(process.env.PORT) || 3001
 const HOST = process.env.NODE_ENV === 'production' ? '::' : '0.0.0.0'
 
 app.listen(PORT, HOST, () => {
-  console.log(`🚀 API server running on ${HOST}:${PORT}`)
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`🔒 CORS enabled for: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`)
-  console.log(`✅ Health check: http://${HOST}:${PORT}/health`)
+  console.log('\n🚀 Pixel Flow API Server Started')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log(`📍 Environment:     ${process.env.NODE_ENV || 'development'}`)
+  console.log(`🌐 Host:            ${HOST}`)
+  console.log(`🔌 Port:            ${PORT}`)
+  console.log(`✅ Health Check:    http://${HOST}:${PORT}/health`)
+  console.log('\n🔒 Security Features Enabled:')
+  console.log(`   • Helmet:         ✅`)
+  console.log(`   • CORS:           ✅ Strict whitelist`)
+  console.log(`   • Rate Limiting:  ✅ Auth: 5/15min, API: 100/15min`)
+  console.log('\n🌍 Allowed Origins:')
+  allowedOrigins.forEach(origin => console.log(`   • ${origin}`))
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+}).on('error', (err) => {
+  console.error('❌ Server failed to start:', err)
+  process.exit(1)
 })
-
 
 export default app
