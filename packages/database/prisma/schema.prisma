@@ -18,6 +18,9 @@ model User {
   fullName          String?
   avatarUrl         String?
   
+  // Credits
+  credits           Int      @default(0)
+  
   // Account status
   isActive          Boolean  @default(true)
   emailVerified     Boolean  @default(false)
@@ -32,6 +35,9 @@ model User {
   transactions      Transaction[]
   orders            Order[]
   packagePurchases  PackagePurchase[]
+  subscriptions     Subscription[]
+  payments          Payment[]
+  downloads         Download[]
   
   @@index([email])
   @@index([supabaseId])
@@ -55,6 +61,48 @@ model Balance {
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
+}
+
+// ===== SUBSCRIPTIONS (NEW) =====
+
+model Subscription {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id])
+  
+  plan          String   // "starter", "pro", "business"
+  status        String   // "active", "cancelled", "expired"
+  credits       Int      // Credits included per month
+  
+  billingCycle  Int      @default(1) @map("billing_cycle") // 1, 2, or 3 months
+  monthlyPrice  Float    @map("monthly_price") // Price per month after increase
+  totalPrice    Float    @map("total_price") // Total price paid
+  
+  startDate     DateTime @default(now()) @map("start_date")
+  endDate       DateTime @map("end_date")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  @@map("subscriptions")
+}
+
+// ===== PAYMENTS =====
+
+model Payment {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id])
+  subscriptionId  String?  @map("subscription_id")
+  
+  amount          Float
+  currency        String   @default("USD")
+  status          String   // "pending", "completed", "failed"
+  paymentMethod   String   @map("payment_method") // "card", "paypal", "simulation"
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  @@map("payments")
 }
 
 // ===== PACKAGES =====
@@ -198,4 +246,24 @@ enum OrderStatus {
   DOWNLOADED
   ERROR
   EXPIRED
+}
+
+// ===== DOWNLOADS =====
+
+model Download {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id])
+  
+  stockSite    String   @map("stock_site")
+  stockId      String   @map("stock_id")
+  title        String?
+  thumbnail    String?
+  downloadUrl  String?  @map("download_url")
+  status       String   // "ready", "processing", "failed"
+  creditsUsed  Int      @map("credits_used")
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@map("downloads")
 }
