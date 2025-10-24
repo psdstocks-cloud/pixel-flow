@@ -11,7 +11,6 @@ function PaymentContent() {
   
   const plan = searchParams.get('plan');
   const cycle = parseInt(searchParams.get('cycle') || '1');
-  const monthlyPrice = parseFloat(searchParams.get('monthlyPrice') || '0');
   const totalPrice = parseFloat(searchParams.get('totalPrice') || '0');
   const credits = parseInt(searchParams.get('credits') || '0');
 
@@ -26,22 +25,27 @@ function PaymentContent() {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setProcessing(false);
+      return;
+    }
 
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + cycle);
 
+    // Create subscription
     await supabase.from('subscriptions').insert({
       user_id: user.id,
       plan: plan,
       status: 'active',
-      credits: credits / cycle,
+      credits: credits,
       billing_cycle: cycle,
-      monthly_price: monthlyPrice,
+      monthly_price: totalPrice / cycle,
       total_price: totalPrice,
       end_date: endDate.toISOString(),
     });
 
+    // Create payment record
     await supabase.from('payments').insert({
       user_id: user.id,
       amount: totalPrice,
@@ -49,13 +53,25 @@ function PaymentContent() {
       payment_method: 'simulation',
     });
 
+    // Get current credits
+    const { data: userData } = await supabase
+      .from('users')
+      .select('credits')
+      .eq('id', user.id)
+      .single();
+
+    const currentCredits = userData?.credits || 0;
+
+    // Add new credits to existing balance
     await supabase
       .from('users')
-      .update({ credits: credits })
+      .update({ credits: currentCredits + credits })
       .eq('id', user.id);
 
     setProcessing(false);
-    router.push('/dashboard/stock/order-v2?success=true');
+    
+    // Redirect to success page
+    router.push(`/payment/success?credits=${credits}`);
   };
 
   return (
@@ -64,6 +80,7 @@ function PaymentContent() {
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-8">
           <h1 className="text-3xl font-bold text-white mb-8">Complete Your Purchase</h1>
 
+          {/* Order Summary */}
           <div className="mb-8 p-6 bg-white/5 rounded-2xl">
             <h2 className="text-xl font-semibold text-white mb-4">Order Summary</h2>
             <div className="space-y-2 text-white/70">
@@ -72,16 +89,12 @@ function PaymentContent() {
                 <span className="text-white capitalize">{plan}</span>
               </div>
               <div className="flex justify-between">
-                <span>Billing Cycle:</span>
-                <span className="text-white">{cycle} month(s)</span>
+                <span>Access Duration:</span>
+                <span className="text-white">{cycle} month{cycle > 1 ? 's' : ''}</span>
               </div>
               <div className="flex justify-between">
-                <span>Credits:</span>
-                <span className="text-white">{credits} total</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Price per month:</span>
-                <span className="text-white">${monthlyPrice.toFixed(2)}</span>
+                <span>Credits (one-time):</span>
+                <span className="text-green-400 font-semibold">{credits} credits</span>
               </div>
               <div className="border-t border-white/20 mt-4 pt-4 flex justify-between text-lg font-semibold">
                 <span className="text-white">Total:</span>
@@ -90,6 +103,7 @@ function PaymentContent() {
             </div>
           </div>
 
+          {/* Payment Form */}
           <div className="space-y-4">
             <div>
               <label className="block text-white/90 mb-2 text-sm font-medium">Card Number</label>

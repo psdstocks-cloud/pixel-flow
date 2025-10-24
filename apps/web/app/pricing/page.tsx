@@ -9,9 +9,9 @@ const PLANS = [
     id: 'starter',
     name: 'Starter',
     credits: 50,
-    monthlyPrice: 9.99,
+    basePrice: 9.99,
     features: [
-      '50 Credits per month',
+      '50 Credits (one-time)',
       'Access to 49+ stock sites',
       '2 credits per download',
       'HD quality downloads',
@@ -22,10 +22,10 @@ const PLANS = [
     id: 'pro',
     name: 'Pro',
     credits: 200,
-    monthlyPrice: 29.99,
+    basePrice: 29.99,
     popular: true,
     features: [
-      '200 Credits per month',
+      '200 Credits (one-time)',
       'Access to 49+ stock sites',
       '2 credits per download',
       '4K quality downloads',
@@ -37,9 +37,9 @@ const PLANS = [
     id: 'business',
     name: 'Business',
     credits: 500,
-    monthlyPrice: 69.99,
+    basePrice: 69.99,
     features: [
-      '500 Credits per month',
+      '500 Credits (one-time)',
       'Access to 49+ stock sites',
       '2 credits per download',
       '4K quality downloads',
@@ -55,19 +55,16 @@ export default function PricingPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const calculatePrice = (monthlyPrice: number, months: 1 | 2 | 3) => {
-    let pricePerMonth = monthlyPrice;
+  const calculatePrice = (basePrice: number, months: 1 | 2 | 3) => {
+    let totalPrice = basePrice;
 
     if (months === 2) {
-      pricePerMonth = monthlyPrice * 1.15;
+      totalPrice = basePrice * 1.15; // 15% increase for 2-month access
     } else if (months === 3) {
-      pricePerMonth = monthlyPrice * 1.40;
+      totalPrice = basePrice * 1.40; // 40% increase for 3-month access
     }
 
-    return {
-      monthlyPrice: pricePerMonth,
-      totalPrice: pricePerMonth * months,
-    };
+    return totalPrice;
   };
 
   const handleSubscribe = async (planId: string) => {
@@ -79,10 +76,10 @@ export default function PricingPage() {
     }
 
     const plan = PLANS.find(p => p.id === planId);
-    const pricing = calculatePrice(plan!.monthlyPrice, billingCycle);
+    const totalPrice = calculatePrice(plan!.basePrice, billingCycle);
     
     router.push(
-      `/payment?plan=${planId}&cycle=${billingCycle}&monthlyPrice=${pricing.monthlyPrice.toFixed(2)}&totalPrice=${pricing.totalPrice.toFixed(2)}&credits=${plan!.credits * billingCycle}`
+      `/payment?plan=${planId}&cycle=${billingCycle}&totalPrice=${totalPrice.toFixed(2)}&credits=${plan!.credits}`
     );
   };
 
@@ -144,7 +141,7 @@ export default function PricingPage() {
         {/* Pricing Cards */}
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {PLANS.map((plan) => {
-            const pricing = calculatePrice(plan.monthlyPrice, billingCycle);
+            const totalPrice = calculatePrice(plan.basePrice, billingCycle);
             
             return (
               <div
@@ -165,17 +162,14 @@ export default function PricingPage() {
                 <div className="mb-6">
                   <div className="flex items-baseline gap-2">
                     <span className="text-5xl font-bold text-white">
-                      ${pricing.monthlyPrice.toFixed(2)}
+                      ${totalPrice.toFixed(2)}
                     </span>
-                    <span className="text-white/60">/month</span>
                   </div>
-                  {billingCycle > 1 && (
-                    <p className="text-white/70 text-sm mt-2">
-                      Total: ${pricing.totalPrice.toFixed(2)} for {billingCycle} months
-                    </p>
-                  )}
-                  <p className="text-white/60 text-sm mt-1">
-                    {plan.credits * billingCycle} total credits
+                  <p className="text-white/70 text-sm mt-2">
+                    {billingCycle} month{billingCycle > 1 ? 's' : ''} access
+                  </p>
+                  <p className="text-green-400 font-semibold text-sm mt-1">
+                    {plan.credits} credits (one-time)
                   </p>
                 </div>
 
