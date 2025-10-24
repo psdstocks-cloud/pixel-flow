@@ -2,7 +2,9 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react';
+/* eslint-disable @next/next/no-img-element */
+
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 interface StockInfo {
@@ -37,7 +39,6 @@ const NEHTW_API_KEY = 'A8K9bV5s2OX12E8cmS4I96mtmSNzv7';
 const NEHTW_BASE_URL = 'https://nehtw.com/api';
 const CREDITS_PER_DOWNLOAD = 2;
 
-// Site URLs mapping
 const SITE_URLS: Record<string, string> = {
   shutterstock: 'https://www.shutterstock.com',
   adobestock: 'https://stock.adobe.com',
@@ -66,17 +67,10 @@ export default function OrderV2Page() {
   const [showAllSites, setShowAllSites] = useState(false);
   const supabase = createClient();
 
-  // Fetch user data
-  useEffect(() => {
-    fetchUserData();
-    fetchStockSites();
-  }, []);
-
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setUserId(user.id);
-      // Fetch user credits from your users table
       const { data } = await supabase
         .from('users')
         .select('credits')
@@ -87,9 +81,9 @@ export default function OrderV2Page() {
         setUserBalance(data.credits || 0);
       }
     }
-  };
+  }, [supabase]);
 
-  const fetchStockSites = async () => {
+  const fetchStockSites = useCallback(async () => {
     try {
       const response = await fetch(`${NEHTW_BASE_URL}/stocksites`, {
         headers: { 'X-Api-Key': NEHTW_API_KEY },
@@ -99,9 +93,13 @@ export default function OrderV2Page() {
     } catch (error) {
       console.error('Failed to fetch stock sites:', error);
     }
-  };
+  }, []);
 
-  // Deduct credits from Supabase
+  useEffect(() => {
+    fetchUserData();
+    fetchStockSites();
+  }, [fetchUserData, fetchStockSites]);
+
   const deductCredits = async (amount: number) => {
     if (!userId) return false;
 
@@ -117,8 +115,7 @@ export default function OrderV2Page() {
     return false;
   };
 
-  // Save download to database
-  const saveDownload = async (order: Order) => {
+  const saveDownload = useCallback(async (order: Order) => {
     if (!userId) return;
 
     await supabase.from('downloads').insert({
@@ -131,7 +128,7 @@ export default function OrderV2Page() {
       status: 'ready',
       credits_used: CREDITS_PER_DOWNLOAD,
     });
-  };
+  }, [userId, supabase]);
 
   const parseStockUrl = (url: string): { site: string; id: string } | null => {
     try {
@@ -223,7 +220,6 @@ export default function OrderV2Page() {
       return;
     }
 
-    // Deduct credits FIRST
     const success = await deductCredits(CREDITS_PER_DOWNLOAD);
     if (!success) {
       alert('Failed to deduct credits. Please try again.');
@@ -249,7 +245,6 @@ export default function OrderV2Page() {
           )
         );
       } else {
-        // Refund credits if order failed
         await supabase
           .from('users')
           .update({ credits: userBalance })
@@ -257,7 +252,6 @@ export default function OrderV2Page() {
       }
     } catch (error) {
       console.error('Failed to create order:', error);
-      // Refund credits on error
       await supabase
         .from('users')
         .update({ credits: userBalance })
@@ -274,7 +268,7 @@ export default function OrderV2Page() {
       .split('\n')
       .map(u => u.trim())
       .filter(u => u.length > 0)
-      .slice(0, 5); // Limit to 5 URLs
+      .slice(0, 5);
 
     if (urlList.length === 0) return;
 
@@ -352,7 +346,6 @@ export default function OrderV2Page() {
             )
           );
 
-          // Save to downloads database
           if (downloadUrl) {
             await saveDownload({ ...order, downloadUrl, status: 'ready' });
           }
@@ -369,9 +362,9 @@ export default function OrderV2Page() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [orders]);
+  }, [orders, saveDownload]);
 
-  const activeSites = Object.entries(stockSites).filter(([_, site]) => site.active);
+  const activeSites = Object.entries(stockSites).filter(([, site]) => site.active);
   const displayedSites = showAllSites ? activeSites : activeSites.slice(0, 4);
 
   return (
@@ -395,7 +388,7 @@ export default function OrderV2Page() {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {displayedSites.map(([key, _]) => (
+            {displayedSites.map(([key]) => (
               <a
                 key={key}
                 href={SITE_URLS[key] || `https://${key}.com`}
