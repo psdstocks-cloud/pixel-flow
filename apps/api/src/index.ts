@@ -1,8 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
 import { requireAuth, requireRole } from './middleware/auth'
+import { redisRateLimit } from './middleware/redis-rate-limit'
 import { prisma } from '@pixel-flow/database'
 import paymentsRouter from './routes/payments'
 
@@ -12,26 +12,20 @@ const app = express()
 // SECURITY MIDDLEWARE
 // ============================================
 
-// Helmet - Security headers
 app.use(helmet())
 
-// Enhanced CORS Configuration - SECURE
+// Enhanced CORS Configuration
 const allowedOrigins = [
-  'https://pixel-flow.vercel.app',                    // Production
-  'https://pixel-flow-staging.vercel.app',            // Staging (if you have one)
-  process.env.FRONTEND_URL,                            // Dynamic from env
-  process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,  // Local dev
-  process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : null   // Local API testing
+  'https://pixel-flow.vercel.app',
+  'https://pixel-flow-staging.vercel.app',
+  process.env.FRONTEND_URL,
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : null
 ].filter(Boolean) as string[]
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, curl)
-    if (!origin) {
-      return callback(null, true)
-    }
-    
-    // Check if origin is in whitelist
+    if (!origin) return callback(null, true)
     if (allowedOrigins.includes(origin)) {
       callback(null, true)
     } else {
@@ -39,60 +33,30 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'))
     }
   },
-  credentials: true,                                  // Allow cookies
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-  maxAge: 86400                                       // Cache preflight for 24 hours
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+  maxAge: 86400
 }))
 
-// Body parsing
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // ============================================
-// RATE LIMITING
+// HEALTH CHECK ENDPOINTS (PUBLIC RATE LIMIT)
 // ============================================
 
-// Strict rate limiter for authentication endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,                    // 5 attempts for auth endpoints
-  skipSuccessfulRequests: true,
-  message: {
-    error: 'Too many login attempts. Please try again in 15 minutes.',
-    retryAfter: 15 * 60
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-}) as any  // Type assertion to bypass Express type conflicts
-
-// General API rate limiter
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                  // 100 requests for general API
-  message: {
-    error: 'Too many requests from this IP, please try again later',
-    retryAfter: 15 * 60
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-}) as any  // Type assertion to bypass Express type conflicts
-
-// ============================================
-// HEALTH CHECK ENDPOINTS
-// ============================================
-
-app.get('/', (req, res) => {
+app.get('/', redisRateLimit('public'), (req, res) => {
   res.status(200).json({
     status: 'healthy',
     service: 'pixel-flow-api',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: '2.0.0',
   })
 })
 
-app.get('/health', (req, res) => {
+app.get('/health', redisRateLimit('public'), (req, res) => {
   res.status(200).json({
     status: 'healthy',
     service: 'pixel-flow-api',
@@ -101,17 +65,16 @@ app.get('/health', (req, res) => {
 })
 
 // ============================================
-// PAYMENT ROUTES (with rate limiting)
+// PAYMENT ROUTES (API RATE LIMIT)
 // ============================================
 
-app.use('/api/payments', apiLimiter, paymentsRouter)
+app.use('/api/payments', redisRateLimit('api'), paymentsRouter)
 
 // ============================================
-// USER ROUTES (with rate limiting)
+// USER ROUTES (API RATE LIMIT)
 // ============================================
 
-// Get user profile
-app.get('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
+app.get('/api/user/profile', redisRateLimit('api'), requireAuth, async (req, res) => {
   try {
     const profile = await prisma.profile.findUnique({
       where: { id: req.user!.id },
@@ -136,17 +99,13 @@ app.get('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
   }
 })
 
-// Update user profile
-app.put('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
+app.put('/api/user/profile', redisRateLimit('api'), requireAuth, async (req, res) => {
   try {
     const { fullName, avatarUrl } = req.body
 
     const profile = await prisma.profile.update({
       where: { id: req.user!.id },
-      data: {
-        fullName,
-        avatarUrl
-      }
+      data: { fullName, avatarUrl }
     })
 
     res.json({ success: true, profile })
@@ -156,8 +115,7 @@ app.put('/api/user/profile', apiLimiter, requireAuth, async (req, res) => {
   }
 })
 
-// Get user orders
-app.get('/api/orders', apiLimiter, requireAuth, async (req, res) => {
+app.get('/api/orders', redisRateLimit('api'), requireAuth, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       where: { userId: req.user!.id },
@@ -182,8 +140,7 @@ app.get('/api/orders', apiLimiter, requireAuth, async (req, res) => {
   }
 })
 
-// Get user downloads
-app.get('/api/downloads', apiLimiter, requireAuth, async (req, res) => {
+app.get('/api/downloads', redisRateLimit('api'), requireAuth, async (req, res) => {
   try {
     const downloads = await prisma.download.findMany({
       where: { 
@@ -210,8 +167,7 @@ app.get('/api/downloads', apiLimiter, requireAuth, async (req, res) => {
   }
 })
 
-// Get user transactions
-app.get('/api/transactions', apiLimiter, requireAuth, async (req, res) => {
+app.get('/api/transactions', redisRateLimit('api'), requireAuth, async (req, res) => {
   try {
     const transactions = await prisma.transaction.findMany({
       where: { userId: req.user!.id },
@@ -227,11 +183,10 @@ app.get('/api/transactions', apiLimiter, requireAuth, async (req, res) => {
 })
 
 // ============================================
-// PACKAGE ROUTES
+// PACKAGE ROUTES (PUBLIC)
 // ============================================
 
-// Get all active packages
-app.get('/api/packages', apiLimiter, async (req, res) => {
+app.get('/api/packages', redisRateLimit('public'), async (req, res) => {
   try {
     const packages = await prisma.package.findMany({
       where: { isActive: true },
@@ -252,8 +207,7 @@ app.get('/api/packages', apiLimiter, async (req, res) => {
 // ASSET ROUTES (PUBLIC)
 // ============================================
 
-// Get all assets (public catalog)
-app.get('/api/assets', apiLimiter, async (req, res) => {
+app.get('/api/assets', redisRateLimit('public'), async (req, res) => {
   try {
     const { category, search, page = '1', limit = '20' } = req.query
 
@@ -312,8 +266,7 @@ app.get('/api/assets', apiLimiter, async (req, res) => {
   }
 })
 
-// Get single asset
-app.get('/api/assets/:id', apiLimiter, async (req, res) => {
+app.get('/api/assets/:id', redisRateLimit('public'), async (req, res) => {
   try {
     const asset = await prisma.asset.findUnique({
       where: { id: req.params.id },
@@ -340,11 +293,10 @@ app.get('/api/assets/:id', apiLimiter, async (req, res) => {
 })
 
 // ============================================
-// ADMIN ROUTES (with strict auth rate limiting)
+// ADMIN ROUTES (AUTH RATE LIMIT - STRICT)
 // ============================================
 
-// Get all users (admin only)
-app.get('/api/admin/users', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
+app.get('/api/admin/users', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const users = await prisma.profile.findMany({
       select: {
@@ -374,8 +326,7 @@ app.get('/api/admin/users', authLimiter, requireAuth, requireRole(['admin']), as
   }
 })
 
-// Get all orders (admin only)
-app.get('/api/admin/orders', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
+app.get('/api/admin/orders', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       include: {
@@ -404,8 +355,7 @@ app.get('/api/admin/orders', authLimiter, requireAuth, requireRole(['admin']), a
   }
 })
 
-// Update user role (admin only)
-app.put('/api/admin/users/:id/role', authLimiter, requireAuth, requireRole(['admin']), async (req, res) => {
+app.put('/api/admin/users/:id/role', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
   try {
     const { role } = req.body
 
@@ -429,7 +379,6 @@ app.put('/api/admin/users/:id/role', authLimiter, requireAuth, requireRole(['adm
 // ERROR HANDLING
 // ============================================
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -439,9 +388,7 @@ app.use((req, res) => {
   })
 })
 
-// Global error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  // Log error server-side
   console.error('Unhandled error:', {
     error: err.message,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
@@ -450,7 +397,6 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     ip: req.ip
   })
 
-  // CORS errors
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({ 
       error: 'CORS Error',
@@ -459,7 +405,6 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     })
   }
 
-  // Generic error response (never expose internal errors in production)
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -483,7 +428,10 @@ app.listen(PORT, HOST, () => {
   console.log('\n🔒 Security Features Enabled:')
   console.log(`   • Helmet:         ✅`)
   console.log(`   • CORS:           ✅ Strict whitelist`)
-  console.log(`   • Rate Limiting:  ✅ Auth: 5/15min, API: 100/15min`)
+  console.log(`   • Rate Limiting:  ✅ Redis-backed distributed (Upstash)`)
+  console.log(`     - Auth:         5 req/15min (admin routes)`)
+  console.log(`     - API:          100 req/15min (user routes)`)
+  console.log(`     - Public:       1000 req/15min (public routes)`)
   console.log('\n🌍 Allowed Origins:')
   allowedOrigins.forEach(origin => console.log(`   • ${origin}`))
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
