@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -57,15 +57,15 @@ export default function PricingPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setIsAuthenticated(!!user);
     setLoading(false);
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const calculatePrice = (basePrice: number, months: 1 | 2 | 3) => {
     let totalPrice = basePrice;
@@ -80,9 +80,7 @@ export default function PricingPage() {
   };
 
   const handleSubscribe = async (planId: string) => {
-    // Check if user is authenticated
     if (!isAuthenticated) {
-      // Store plan details in localStorage for after login
       const plan = PLANS.find(p => p.id === planId);
       const totalPrice = calculatePrice(plan!.basePrice, billingCycle);
       
@@ -93,12 +91,10 @@ export default function PricingPage() {
         credits: plan!.credits
       }));
 
-      // Redirect to signup page
       router.push('/signup?redirect=payment');
       return;
     }
 
-    // User is authenticated, proceed to payment
     const plan = PLANS.find(p => p.id === planId);
     const totalPrice = calculatePrice(plan!.basePrice, billingCycle);
     
@@ -110,7 +106,6 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-16 px-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-white mb-4">
             Simple, Transparent Pricing
@@ -120,7 +115,6 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* Billing Cycle Toggle */}
         <div className="flex justify-center mb-12">
           <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-2 inline-flex gap-2">
             <button
@@ -162,7 +156,6 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Pricing Cards */}
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {PLANS.map((plan) => {
             const totalPrice = calculatePrice(plan.basePrice, billingCycle);
@@ -224,7 +217,6 @@ export default function PricingPage() {
           })}
         </div>
 
-        {/* Additional Info */}
         <div className="mt-16 text-center">
           <p className="text-white/60">
             All plans include access to 49+ premium stock sites • Cancel anytime • Secure payment

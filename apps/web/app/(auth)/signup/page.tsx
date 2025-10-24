@@ -1,16 +1,15 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-function SignupContent() {
+export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -29,11 +28,9 @@ function SignupContent() {
       return;
     }
 
-    // Check if there's a pending purchase
     const pendingPurchase = localStorage.getItem('pendingPurchase');
     
     if (pendingPurchase && data.user) {
-      // Redirect to payment with stored details
       const purchase = JSON.parse(pendingPurchase);
       localStorage.removeItem('pendingPurchase');
       
@@ -41,7 +38,6 @@ function SignupContent() {
         `/payment?plan=${purchase.plan}&cycle=${purchase.cycle}&totalPrice=${purchase.totalPrice}&credits=${purchase.credits}`
       );
     } else {
-      // Regular signup, go to dashboard
       router.push('/dashboard/stock/order-v2');
     }
 
@@ -103,17 +99,5 @@ function SignupContent() {
         </p>
       </div>
     </div>
-  );
-}
-
-export default function SignupPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
-      </div>
-    }>
-      <SignupContent />
-    </Suspense>
   );
 }
