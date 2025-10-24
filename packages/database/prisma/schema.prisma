@@ -3,32 +3,36 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-// ===== USER MANAGEMENT =====
+// ============================================
+// USER PROFILE (Links to Supabase Auth)
+// ============================================
 
-model User {
-  id                String   @id @default(cuid())
-  email             String   @unique
-  supabaseId        String   @unique  // Link to Supabase auth.users.id
+model Profile {
+  id            String   @id @db.Uuid // References auth.users(id) in Supabase
+  email         String   @unique
+  supabaseId    String   @unique @map("supabase_id") @db.Uuid // Same as id, for clarity
   
-  // Profile
-  fullName          String?
-  avatarUrl         String?
+  // Profile information
+  fullName      String?  @map("full_name")
+  avatarUrl     String?  @map("avatar_url")
   
-  // Credits
-  credits           Int      @default(0)
+  // Account status & role
+  role          String   @default("user") // "user", "admin"
+  isActive      Boolean  @default(true) @map("is_active")
+  emailVerified Boolean  @default(false) @map("email_verified")
   
-  // Account status
-  isActive          Boolean  @default(true)
-  emailVerified     Boolean  @default(false)
+  // Credits system
+  credits       Int      @default(0)
   
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  lastLoginAt       DateTime?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz(6)
   
   // Relations
   balance           Balance?
@@ -38,128 +42,162 @@ model User {
   subscriptions     Subscription[]
   payments          Payment[]
   downloads         Download[]
+  assets            Asset[]
   
   @@index([email])
   @@index([supabaseId])
+  @@map("profiles")
 }
 
-// ===== BALANCE & CREDITS =====
+// ============================================
+// BALANCE & CREDITS
+// ============================================
 
 model Balance {
-  id                String   @id @default(cuid())
-  userId            String   @unique
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
   
   // Credits
-  credits           Float    @default(0)
-  currency          String   @default("USD")
+  credits   Float    @default(0)
+  currency  String   @default("USD")
   
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
+  @@map("balances")
 }
 
-// ===== SUBSCRIPTIONS (NEW) =====
+// ============================================
+// SUBSCRIPTIONS
+// ============================================
 
 model Subscription {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  user          User     @relation(fields: [userId], references: [id])
+  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
   
-  plan          String   // "starter", "pro", "business"
-  status        String   // "active", "cancelled", "expired"
-  credits       Int      // Credits included per month
+  // Subscription details
+  plan                String   // "free", "starter", "pro", "business"
+  status              String   @default("active") // "active", "cancelled", "expired"
+  credits             Int      @default(5) // Credits included per period
   
-  billingCycle  Int      @default(1) @map("billing_cycle") // 1, 2, or 3 months
-  monthlyPrice  Float    @map("monthly_price") // Price per month after increase
-  totalPrice    Float    @map("total_price") // Total price paid
+  // Billing
+  billingCycle        Int      @default(1) @map("billing_cycle") // 1, 2, or 3 months
+  monthlyPrice        Float    @default(0) @map("monthly_price") // Price per month
+  totalPrice          Float    @default(0) @map("total_price") // Total price paid
   
-  startDate     DateTime @default(now()) @map("start_date")
-  endDate       DateTime @map("end_date")
+  // Period tracking
+  currentPeriodStart  DateTime @default(now()) @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd    DateTime @map("current_period_end") @db.Timestamptz(6)
   
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  // Usage tracking
+  downloadsUsed       Int      @default(0) @map("downloads_used")
+  downloadsLimit      Int      @default(5) @map("downloads_limit")
   
+  // Timestamps
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
+  // Relations
+  profile             Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
   @@map("subscriptions")
 }
 
-// ===== PAYMENTS =====
+// ============================================
+// PAYMENTS
+// ============================================
 
 model Payment {
-  id              String   @id @default(uuid())
-  userId          String   @map("user_id")
-  user            User     @relation(fields: [userId], references: [id])
-  subscriptionId  String?  @map("subscription_id")
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  subscriptionId  String?  @map("subscription_id") @db.Uuid
   
+  // Payment details
   amount          Float
   currency        String   @default("USD")
-  status          String   // "pending", "completed", "failed"
+  status          String   @default("pending") // "pending", "completed", "failed", "refunded"
   paymentMethod   String   @map("payment_method") // "card", "paypal", "simulation"
   
-  createdAt       DateTime @default(now()) @map("created_at")
+  // External references
+  paymentId       String?  @map("payment_id") // Stripe/PayPal transaction ID
   
+  // Timestamps
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  // Relations
+  user            Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
   @@map("payments")
 }
 
-// ===== PACKAGES =====
+// ============================================
+// PACKAGES (Credit Packages)
+// ============================================
 
 model Package {
-  id                String   @id @default(cuid())
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   
   // Package details
-  name              String
-  description       String?
-  credits           Float
-  price             Float
-  currency          String   @default("USD")
+  name        String
+  description String?
+  credits     Float
+  price       Float
+  currency    String   @default("USD")
   
   // Features
-  features          String[] // Array of feature strings
+  features    String[] // Array of feature strings
   
   // Status
-  isActive          Boolean  @default(true)
-  isPopular         Boolean  @default(false)
+  isActive    Boolean  @default(true) @map("is_active")
+  isPopular   Boolean  @default(false) @map("is_popular")
   
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   
   // Relations
-  purchases         PackagePurchase[]
+  purchases   PackagePurchase[]
   
   @@index([isActive])
+  @@map("packages")
 }
 
 model PackagePurchase {
-  id                String   @id @default(cuid())
-  userId            String
-  packageId         String
+  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  packageId     String        @map("package_id") @db.Uuid
   
   // Purchase details
-  creditsAdded      Float
-  amountPaid        Float
-  currency          String   @default("USD")
+  creditsAdded  Float         @map("credits_added")
+  amountPaid    Float         @map("amount_paid")
+  currency      String        @default("USD")
   
   // Payment info
-  paymentMethod     String?  // stripe, paypal, etc.
-  paymentId         String?  // External payment ID
-  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMethod String?       @map("payment_method") // stripe, paypal, etc.
+  paymentId     String?       @map("payment_id") // External payment ID
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
   
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  package           Package  @relation(fields: [packageId], references: [id])
+  user          Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package       Package       @relation(fields: [packageId], references: [id])
   
   @@index([userId])
   @@index([packageId])
   @@index([paymentStatus])
+  @@map("package_purchases")
 }
 
 enum PaymentStatus {
@@ -169,27 +207,30 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// ===== TRANSACTIONS =====
+// ============================================
+// TRANSACTIONS
+// ============================================
 
 model Transaction {
-  id                String   @id @default(cuid())
-  userId            String
+  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
   
   // Transaction details
-  type              TransactionType
-  amount            Float
-  description       String
-  referenceId       String?  // Link to order or purchase
+  type        TransactionType
+  amount      Float
+  description String
+  referenceId String?         @map("reference_id") // Link to order or purchase
   
   // Timestamps
-  createdAt         DateTime @default(now())
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
   @@index([type])
   @@index([createdAt])
+  @@map("transactions")
 }
 
 enum TransactionType {
@@ -199,71 +240,132 @@ enum TransactionType {
   BONUS
 }
 
-// ===== ORDERS =====
+// ============================================
+// ASSETS (Stock Media Catalog)
+// ============================================
 
-model Order {
-  id                String   @id @default(cuid())
-  userId            String
+model Asset {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   
-  // Order details
-  taskId            String   @unique  // NEHTW task_id
-  site              String
-  stockId           String
-  stockUrl          String?
+  // Asset details
+  title          String
+  description    String?
+  category       String
+  tags           String[]
   
-  // Status
-  status            OrderStatus @default(PENDING)
-  progress          Int       @default(0)
+  // File information
+  fileUrl        String   @map("file_url")
+  thumbnailUrl   String?  @map("thumbnail_url")
+  fileSize       BigInt?  @map("file_size")
+  fileType       String?  @map("file_type")
   
-  // Cost
-  cost              Float
+  // Stock site integration (NEHTW)
+  stockSite      String?  @map("stock_site") // "envato", "freepik", etc.
+  stockId        String?  @map("stock_id") // External stock site ID
+  stockUrl       String?  @map("stock_url") // Original URL
   
-  // Download info
-  downloadUrl       String?
-  expiresAt         DateTime?
-  downloadedAt      DateTime?
+  // Metrics
+  downloadsCount Int      @default(0) @map("downloads_count")
+  isPremium      Boolean  @default(false) @map("is_premium")
+  cost           Float?   // Credit cost to download
   
-  // Error tracking
-  errorMessage      String?
+  // Creator
+  createdBy      String?  @map("created_by") @db.Uuid
   
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creator        Profile? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  orders         Order[]
+  downloads      Download[]
+  
+  @@index([category])
+  @@index([isPremium])
+  @@index([stockSite])
+  @@map("assets")
+}
+
+// ============================================
+// ORDERS
+// ============================================
+
+model Order {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  assetId       String      @map("asset_id") @db.Uuid
+  
+  // NEHTW Integration
+  taskId        String?     @unique @map("task_id") // NEHTW task_id
+  
+  // Order details
+  orderStatus   String      @default("pending") @map("order_status") // "pending", "processing", "ready", "downloaded", "error", "expired"
+  progress      Int         @default(0)
+  amount        Decimal?    @db.Decimal(10, 2)
+  cost          Float       // Credits deducted
+  
+  // Download information
+  downloadUrl   String?     @map("download_url")
+  expiresAt     DateTime?   @map("expires_at") @db.Timestamptz(6)
+  downloadedAt  DateTime?   @map("downloaded_at") @db.Timestamptz(6)
+  
+  // Error tracking
+  errorMessage  String?     @map("error_message")
+  
+  // Timestamps
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
+  // Relations
+  user          Profile     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset         Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  downloads     Download[]
   
   @@index([userId])
+  @@index([assetId])
   @@index([taskId])
-  @@index([status])
+  @@index([orderStatus])
   @@index([createdAt])
+  @@map("orders")
 }
 
-enum OrderStatus {
-  PENDING
-  PROCESSING
-  READY
-  DOWNLOADED
-  ERROR
-  EXPIRED
-}
-
-// ===== DOWNLOADS =====
+// ============================================
+// DOWNLOADS
+// ============================================
 
 model Download {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  user         User     @relation(fields: [userId], references: [id])
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  assetId      String    @map("asset_id") @db.Uuid
+  orderId      String?   @map("order_id") @db.Uuid
   
-  stockSite    String   @map("stock_site")
-  stockId      String   @map("stock_id")
+  // Download details
+  stockSite    String?   @map("stock_site")
+  stockId      String?   @map("stock_id")
   title        String?
   thumbnail    String?
-  downloadUrl  String?  @map("download_url")
-  status       String   // "ready", "processing", "failed"
-  creditsUsed  Int      @map("credits_used")
+  downloadUrl  String?   @map("download_url")
+  status       String    @default("processing") // "processing", "ready", "failed"
   
-  createdAt    DateTime @default(now()) @map("created_at")
+  // Credits tracking
+  creditsUsed  Int       @map("credits_used")
   
+  // Expiration
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  downloadedAt DateTime? @map("downloaded_at") @db.Timestamptz(6)
+  
+  // Timestamps
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  // Relations
+  user         Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  order        Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([assetId])
+  @@index([orderId])
+  @@index([status])
   @@map("downloads")
 }
