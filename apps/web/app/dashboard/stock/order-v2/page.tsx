@@ -29,50 +29,32 @@ interface Order {
 
 interface StockSite {
   active: boolean;
-  price: number;
+  name: string;
+  url: string;
 }
 
 const NEHTW_API_KEY = 'A8K9bV5s2OX12E8cmS4I96mtmSNzv7';
 const NEHTW_BASE_URL = 'https://nehtw.com/api';
+const CREDITS_PER_DOWNLOAD = 2; // Fixed price for all downloads
+
+// Supported stock sites with their URLs
+const STOCK_SITES: Record<string, StockSite> = {
+  shutterstock: { active: true, name: 'Shutterstock', url: 'https://www.shutterstock.com' },
+  adobestock: { active: true, name: 'Adobe Stock', url: 'https://stock.adobe.com' },
+  freepik: { active: true, name: 'Freepik', url: 'https://www.freepik.com' },
+  istockphoto: { active: true, name: 'iStock', url: 'https://www.istockphoto.com' },
+  depositphotos: { active: true, name: 'Depositphotos', url: 'https://depositphotos.com' },
+  '123rf': { active: true, name: '123RF', url: 'https://www.123rf.com' },
+  dreamstime: { active: true, name: 'Dreamstime', url: 'https://www.dreamstime.com' },
+  pond5: { active: true, name: 'Pond5', url: 'https://www.pond5.com' },
+};
 
 export default function OrderV2Page() {
   const [urls, setUrls] = useState<string>('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [stockSites, setStockSites] = useState<Record<string, StockSite>>({});
-  const [userBalance, setUserBalance] = useState<number>(0);
-
-  // Fetch stock sites pricing on mount
-  useEffect(() => {
-    fetchStockSites();
-    fetchUserBalance();
-  }, []);
-
-  const fetchStockSites = async () => {
-    try {
-      const response = await fetch(`${NEHTW_BASE_URL}/stocksites`, {
-        headers: { 'X-Api-Key': NEHTW_API_KEY },
-      });
-      const data = await response.json();
-      setStockSites(data);
-    } catch (error) {
-      console.error('Failed to fetch stock sites:', error);
-    }
-  };
-
-  const fetchUserBalance = async () => {
-    try {
-      const response = await fetch(`${NEHTW_BASE_URL}/me`, {
-        headers: { 'X-Api-Key': NEHTW_API_KEY },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setUserBalance(data.balance);
-      }
-    } catch (error) {
-      console.error('Failed to fetch balance:', error);
-    }
-  };
+  const [userBalance, setUserBalance] = useState<number>(20); // Mock balance - replace with real Supabase data
+  const [showAllSites, setShowAllSites] = useState(false);
 
   // Extract site and ID from URL
   const parseStockUrl = (url: string): { site: string; id: string } | null => {
@@ -84,9 +66,19 @@ export default function OrderV2Page() {
         return { site: 'shutterstock', id };
       }
       
-      if (urlObj.hostname.includes('adobestock.com')) {
+      if (urlObj.hostname.includes('adobestock') || urlObj.hostname.includes('stock.adobe')) {
         const id = url.split('/').pop()?.split('?')[0] || '';
         return { site: 'adobestock', id };
+      }
+
+      if (urlObj.hostname.includes('freepik.com')) {
+        const match = url.match(/\d+$/);
+        return { site: 'freepik', id: match ? match[0] : '' };
+      }
+
+      if (urlObj.hostname.includes('istockphoto.com')) {
+        const match = url.match(/gm(\d+)/);
+        return { site: 'istockphoto', id: match ? match[1] : '' };
       }
       
       return null;
@@ -95,7 +87,7 @@ export default function OrderV2Page() {
     }
   };
 
-  // Get stock info (preview, cost, title)
+  // Get stock info (preview, title, etc)
   const getStockInfo = async (site: string, id: string): Promise<StockInfo | null> => {
     try {
       const response = await fetch(
@@ -108,7 +100,8 @@ export default function OrderV2Page() {
       const result = await response.json();
       
       if (result.success) {
-        return result.data;
+        // Override cost with our fixed price
+        return { ...result.data, cost: CREDITS_PER_DOWNLOAD };
       }
       return null;
     } catch (error) {
@@ -143,6 +136,11 @@ export default function OrderV2Page() {
 
   // Confirm and create actual order
   const confirmOrder = async (order: Order) => {
+    if (userBalance < CREDITS_PER_DOWNLOAD) {
+      alert('Insufficient credits!');
+      return;
+    }
+
     try {
       const response = await fetch(
         `${NEHTW_BASE_URL}/stockorder/${order.site}/${order.stockId}`,
@@ -154,6 +152,9 @@ export default function OrderV2Page() {
       const data = await response.json();
       
       if (data.success) {
+        // Deduct credits from user balance
+        setUserBalance(prev => prev - CREDITS_PER_DOWNLOAD);
+        
         setOrders(prev =>
           prev.map(o =>
             o.id === order.id
@@ -161,8 +162,8 @@ export default function OrderV2Page() {
               : o
           )
         );
-        // Refresh balance
-        fetchUserBalance();
+        
+        // TODO: Update user balance in Supabase
       }
     } catch (error) {
       console.error('Failed to create order:', error);
@@ -267,10 +268,14 @@ export default function OrderV2Page() {
           );
         }
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [orders]);
+
+  const displayedSites = showAllSites 
+    ? Object.entries(STOCK_SITES) 
+    : Object.entries(STOCK_SITES).slice(0, 4);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-8">
@@ -279,29 +284,48 @@ export default function OrderV2Page() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-white">Stock Order (v2)</h1>
           <div className="text-white/90 text-lg font-semibold">
-            Balance: <span className="text-green-400">{userBalance.toFixed(2)}</span> Credits
+            Balance: <span className="text-green-400">{userBalance}</span> Credits
           </div>
         </div>
 
-        {/* Supported Sites Pricing */}
+        {/* Supported Sites - Compact Pills Design */}
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
-          <h2 className="text-white/90 font-semibold mb-4 text-lg">Supported Stock Sites</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(stockSites).map(([site, info]) => (
-              <div
-                key={site}
-                className={`p-4 rounded-lg ${
-                  info.active
-                    ? 'bg-green-500/10 border border-green-500/30'
-                    : 'bg-red-500/10 border border-red-500/30'
-                }`}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white/90 font-semibold text-lg">
+              Supported Stock Sites ({Object.keys(STOCK_SITES).length})
+            </h2>
+            <span className="text-yellow-400 font-semibold text-sm">
+              {CREDITS_PER_DOWNLOAD} Credits per download
+            </span>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {displayedSites.map(([key, site]) => (
+              <a
+                key={key}
+                href={site.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-white/10 rounded-full transition-all duration-200 flex items-center gap-2"
               >
-                <div className="text-white/90 font-medium capitalize">{site}</div>
-                <div className="text-white/70 text-sm mt-1">
-                  {info.active ? `${info.price} credits` : 'Inactive'}
-                </div>
-              </div>
+                <span className="w-2 h-2 bg-green-400 rounded-full group-hover:animate-pulse"></span>
+                <span className="text-white/90 text-sm font-medium">{site.name}</span>
+                <svg className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
             ))}
+            
+            {Object.keys(STOCK_SITES).length > 4 && (
+              <button
+                onClick={() => setShowAllSites(!showAllSites)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all duration-200"
+              >
+                <span className="text-white/70 text-sm">
+                  {showAllSites ? 'Show Less' : `+${Object.keys(STOCK_SITES).length - 4} More`}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -367,19 +391,19 @@ export default function OrderV2Page() {
                         </p>
                       )}
                       <p className="text-lg font-semibold text-yellow-300">
-                        Cost: {order.stockInfo.cost} Credits
+                        Cost: {CREDITS_PER_DOWNLOAD} Credits
                       </p>
                     </div>
                     
                     {/* Confirm Button */}
                     <button
                       onClick={() => confirmOrder(order)}
-                      disabled={userBalance < order.stockInfo.cost}
+                      disabled={userBalance < CREDITS_PER_DOWNLOAD}
                       className="mt-4 px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
-                      {userBalance < order.stockInfo.cost
+                      {userBalance < CREDITS_PER_DOWNLOAD
                         ? 'Insufficient Credits'
-                        : 'Confirm Order'}
+                        : `Confirm Order (${CREDITS_PER_DOWNLOAD} Credits)`}
                     </button>
                   </div>
                 </div>
@@ -391,7 +415,7 @@ export default function OrderV2Page() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex-1">
                       <p className="text-white/60 text-sm mb-1">
-                        {order.site} - {order.stockId}
+                        {STOCK_SITES[order.site]?.name || order.site} - {order.stockId}
                       </p>
                       {order.stockInfo && (
                         <p className="text-white/90 font-medium">{order.stockInfo.title}</p>
