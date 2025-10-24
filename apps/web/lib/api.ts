@@ -110,3 +110,29 @@ class APIClient {
 }
 
 export const apiClient = new APIClient();
+import { createClient } from '@/lib/supabase/client'
+
+export async function fetchProtectedData() {
+  const supabase = createClient()
+  
+  // Get current session token
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) {
+    throw new Error('Not authenticated')
+  }
+
+  // Call your Express.js backend with token
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/orders`, {
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch data')
+  }
+
+  return response.json()
+}

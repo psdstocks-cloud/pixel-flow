@@ -1,421 +1,419 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import nehtwService from './services/nehtwService';
+import express, { Request, Response, NextFunction } from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
+import { requireAuth, requireRole } from './middleware/auth'
+import { prisma } from '@pixel-flow/database'
+import paymentsRouter from './routes/payments'
 
-// Import route modules
-import stockRoutes from './routes/stock.routes';
-import accountRoutes from './routes/account.routes';
+const app = express()
 
-dotenv.config();
+// ============================================
+// SECURITY MIDDLEWARE
+// ============================================
 
-const app = express();
+app.use(helmet())
 app.use(cors({
-  origin: [
-    'https://pixel-flow-sigma.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key']
-}));
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}))
+// Rate limiting - inline to avoid TypeScript issues
+// Rate limiting - type assertion for TypeScript compatibility
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: 'Too many requests from this IP, please try again later'
+}) as any)
 
-// ===== CORS CONFIGURATION =====
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-  'https://pixel-flow-sigma.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:3001',
-];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`❌ CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// Body parsing
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
-app.options('*', cors());
-app.use(express.json());
+// ============================================
+// HEALTH CHECK ENDPOINTS
 
-// ===== CONFIGURATION =====
-const PORT = Number(process.env.PORT) || 3001;
-const NEHTW_API_KEY = process.env.NEHTW_API_KEY || '';
+app.use(express.urlencoded({ extended: true }))
 
-if (!process.env.NEHTW_API_KEY) {
-  console.warn('⚠️ NEHTW_API_KEY not set in environment, using fallback');
-}
-console.log(`✅ nehtw API configured with key: ${NEHTW_API_KEY.substring(0, 8)}...`);
+// ============================================
+// HEALTH CHECK ENDPOINTS
+// ============================================
 
-// ===== HEALTH CHECK ENDPOINTS =====
-app.get('/', (req: Request, res: Response) => {
+app.get('/', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     service: 'pixel-flow-api',
     timestamp: new Date().toISOString(),
-    port: PORT,
     version: '1.0.0',
-  });
-});
+  })
+})
 
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     service: 'pixel-flow-api',
     timestamp: new Date().toISOString(),
-  });
-});
+  })
+})
 
-// ===== API ROUTES =====
-// Mount route modules
-app.use('/api/stock', stockRoutes);
-app.use('/api/account', accountRoutes);
+// ============================================
+// PAYMENT ROUTES
+// ============================================
 
-// Legacy routes (for backward compatibility)
-app.get('/api/packages', (req: Request, res: Response) => {
-  res.json({
-    message: 'Packages endpoint',
-    data: [],
-    timestamp: new Date().toISOString(),
-  });
-});
+app.use('/api/payments', paymentsRouter)
 
-app.get('/api/orders', (req: Request, res: Response) => {
-  res.json({
-    message: 'Orders endpoint',
-    data: [],
-    timestamp: new Date().toISOString(),
-  });
-});
+// ============================================
+// USER ROUTES
+// ============================================
 
-app.post('/api/orders', (req: Request, res: Response) => {
-  res.status(201).json({
-    message: 'Order created',
-    data: req.body,
-    timestamp: new Date().toISOString(),
-  });
-});
+// Get user profile
+app.get('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const profile = await prisma.profile.findUnique({
+      where: { id: req.user!.id },
+      include: {
+        subscriptions: {
+          where: { status: 'active' },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        },
+        balance: true
+      }
+    })
+    
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' })
+    }
+    
+    res.json({ success: true, profile })
+  } catch (error) {
+    console.error('Profile fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch profile' })
+  }
+})
 
-// ===== ERROR HANDLING =====
-app.use((req: Request, res: Response) => {
+// Update user profile
+app.put('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const { fullName, avatarUrl } = req.body
+
+    const profile = await prisma.profile.update({
+      where: { id: req.user!.id },
+      data: {
+        fullName,
+        avatarUrl
+      }
+    })
+
+    res.json({ success: true, profile })
+  } catch (error) {
+    console.error('Profile update error:', error)
+    res.status(500).json({ error: 'Failed to update profile' })
+  }
+})
+
+// Get user orders
+app.get('/api/orders', requireAuth, async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { userId: req.user!.id },
+      include: {
+        asset: {
+          select: {
+            id: true,
+            title: true,
+            thumbnailUrl: true,
+            category: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+    
+    res.json({ success: true, orders })
+  } catch (error) {
+    console.error('Orders fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch orders' })
+  }
+})
+
+// Get user downloads
+app.get('/api/downloads', requireAuth, async (req, res) => {
+  try {
+    const downloads = await prisma.download.findMany({
+      where: { 
+        userId: req.user!.id,
+        expiresAt: { gt: new Date() }
+      },
+      include: {
+        asset: {
+          select: {
+            id: true,
+            title: true,
+            thumbnailUrl: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+    
+    res.json({ success: true, downloads })
+  } catch (error) {
+    console.error('Downloads fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch downloads' })
+  }
+})
+
+// Get user transactions
+app.get('/api/transactions', requireAuth, async (req, res) => {
+  try {
+    const transactions = await prisma.transaction.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    })
+    
+    res.json({ success: true, transactions })
+  } catch (error) {
+    console.error('Transactions fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch transactions' })
+  }
+})
+
+// ============================================
+// PACKAGE ROUTES
+// ============================================
+
+// Get all active packages
+app.get('/api/packages', async (req, res) => {
+  try {
+    const packages = await prisma.package.findMany({
+      where: { isActive: true },
+      orderBy: [
+        { isPopular: 'desc' },
+        { price: 'asc' }
+      ]
+    })
+    
+    res.json({ success: true, packages })
+  } catch (error) {
+    console.error('Packages fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch packages' })
+  }
+})
+
+// ============================================
+// ASSET ROUTES (PUBLIC)
+// ============================================
+
+// Get all assets (public catalog)
+app.get('/api/assets', async (req, res) => {
+  try {
+    const { category, search, page = '1', limit = '20' } = req.query
+
+    const pageNum = parseInt(page as string)
+    const limitNum = parseInt(limit as string)
+    const skip = (pageNum - 1) * limitNum
+
+    const where: any = {}
+
+    if (category) {
+      where.category = category
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } }
+      ]
+    }
+
+    const [assets, total] = await Promise.all([
+      prisma.asset.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          category: true,
+          tags: true,
+          thumbnailUrl: true,
+          isPremium: true,
+          cost: true,
+          downloadsCount: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum
+      }),
+      prisma.asset.count({ where })
+    ])
+
+    res.json({
+      success: true,
+      assets,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    })
+  } catch (error) {
+    console.error('Assets fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch assets' })
+  }
+})
+
+// Get single asset
+app.get('/api/assets/:id', async (req, res) => {
+  try {
+    const asset = await prisma.asset.findUnique({
+      where: { id: req.params.id },
+      include: {
+        creator: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarUrl: true
+          }
+        }
+      }
+    })
+
+    if (!asset) {
+      return res.status(404).json({ error: 'Asset not found' })
+    }
+
+    res.json({ success: true, asset })
+  } catch (error) {
+    console.error('Asset fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch asset' })
+  }
+})
+
+// ============================================
+// ADMIN ROUTES
+// ============================================
+
+// Get all users (admin only)
+app.get('/api/admin/users', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const users = await prisma.profile.findMany({
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        credits: true,
+        isActive: true,
+        emailVerified: true,
+        createdAt: true,
+        lastLoginAt: true,
+        _count: {
+          select: {
+            orders: true,
+            downloads: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+    
+    res.json({ success: true, users })
+  } catch (error) {
+    console.error('Users fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch users' })
+  }
+})
+
+// Get all orders (admin only)
+app.get('/api/admin/orders', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
+        },
+        asset: {
+          select: {
+            id: true,
+            title: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    })
+    
+    res.json({ success: true, orders })
+  } catch (error) {
+    console.error('Admin orders fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch orders' })
+  }
+})
+
+// Update user role (admin only)
+app.put('/api/admin/users/:id/role', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const { role } = req.body
+
+    if (!['user', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' })
+    }
+
+    const user = await prisma.profile.update({
+      where: { id: req.params.id },
+      data: { role }
+    })
+
+    res.json({ success: true, user })
+  } catch (error) {
+    console.error('Role update error:', error)
+    res.status(500).json({ error: 'Failed to update role' })
+  }
+})
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+
+// 404 handler
+app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
     path: req.path,
     timestamp: new Date().toISOString(),
-  });
-});
+  })
+})
 
+// Global error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message,
-  });
-});
+  console.error('Unhandled error:', err)
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  })
+})
 
-// ===== START SERVER =====
+// ============================================
+// START SERVER
+// ============================================
+
+const PORT = Number(process.env.PORT) || 3001
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ API server running on port ${PORT}`);
-  console.log(`📍 Health check: http://localhost:${PORT}/`);
-  console.log(`📦 Stock API: http://localhost:${PORT}/api/stock`);
-  console.log(`💳 Account API: http://localhost:${PORT}/api/account`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔒 CORS enabled for: ${allowedOrigins.join(', ')}`);
-});
+  console.log(`🚀 API server running on port ${PORT}`)
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`)
+  console.log(`🔒 CORS enabled for: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`)
+  console.log(`✅ Health check: http://localhost:${PORT}/health`)
+})
 
-export default app;
-
-
-// Get supported stock sites
-app.get('/api/stock/sites', async (req: Request, res: Response) => {
-  try {
-    const sites = await nehtwService.getStockSites();
-    res.json({ success: true, data: sites });
-  } catch (error) {
-    console.error('Error fetching stock sites:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-// Get stock information
-app.post('/api/stock/info', async (req: Request, res: Response) => {
-  try {
-    const { site, id, url } = req.body;
-    
-    if (!site || !id) {
-      return res.status(400).json({ success: false, error: 'Site and ID are required' });
-    }
-    
-    const info = await nehtwService.getStockInfo(site, id, url);
-    res.json(info);
-  } catch (error) {
-    console.error('Error fetching stock info:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-// Create stock order
-app.post('/api/stock/order', async (req: Request, res: Response) => {
-  try {
-    const { site, id, url } = req.body;
-    
-    if (!site || !id) {
-      return res.status(400).json({ success: false, error: 'Site and ID are required' });
-    }
-    
-    const order = await nehtwService.createOrder(site, id, url);
-    
-    // TODO: Save order to database
-    // await prisma.order.create({ data: { ... } });
-    
-    res.json(order);
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-// Check order status
-app.get('/api/stock/status/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const status = await nehtwService.checkOrderStatus(taskId);
-    res.json(status);
-  } catch (error) {
-    console.error('Error checking order status:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-// Generate download link
-app.get('/api/stock/download/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const download = await nehtwService.generateDownloadLink(taskId);
-    res.json(download);
-  } catch (error) {
-    console.error('Error generating download link:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-// ... existing code ...
-
-// ===== NEHTW STOCK DOWNLOAD ROUTES =====
-
-/**
- * Get supported stock sites
- */
-app.get('/api/stock/sites', async (req: Request, res: Response) => {
-  try {
-    const result = await nehtwService.getStockSites();
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error fetching stock sites:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Get stock information
- * POST /api/stock/info
- * Body: { site: string, id: string, url?: string }
- */
-app.post('/api/stock/info', async (req: Request, res: Response) => {
-  try {
-    const { site, id, url } = req.body;
-    
-    if (!site && !url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Either site+id or full url is required' 
-      });
-    }
-    
-    const result = await nehtwService.getStockInfo(site, id, url);
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error fetching stock info:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Create stock order
- * POST /api/stock/order
- * Body: { site: string, id: string, url?: string }
- */
-app.post('/api/stock/order', async (req: Request, res: Response) => {
-  try {
-    const { site, id, url } = req.body;
-    
-    if (!site && !url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Either site+id or full url is required' 
-      });
-    }
-    
-    // TODO: Check user balance before creating order
-    // TODO: Deduct credits from user account
-    
-    const result = await nehtwService.createOrder(site, id, url);
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    // TODO: Save order to database
-    // await prisma.order.create({ ... });
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Check order status
- * GET /api/stock/status/:taskId
- */
-app.get('/api/stock/status/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const result = await nehtwService.checkOrderStatus(taskId);
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error checking order status:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Generate download link
- * GET /api/stock/download/:taskId
- */
-app.get('/api/stock/download/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const result = await nehtwService.generateDownloadLink(taskId);
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    // TODO: Update order status in database
-    // TODO: Log download in transaction history
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error generating download link:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Complete download workflow (create order + poll + download)
- * POST /api/stock/download-workflow
- * Body: { site: string, id: string, url?: string }
- */
-app.post('/api/stock/download-workflow', async (req: Request, res: Response) => {
-  try {
-    const { site, id, url } = req.body;
-    
-    if (!site && !url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Either site+id or full url is required' 
-      });
-    }
-    
-    const result = await nehtwService.downloadStockWorkflow(site, id, url);
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error in download workflow:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
-
-/**
- * Get account balance
- * GET /api/account/balance
- */
-app.get('/api/account/balance', async (req: Request, res: Response) => {
-  try {
-    const result = await nehtwService.getAccountBalance();
-    
-    if (!result.success) {
-      return res.status(500).json(result);
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error fetching account balance:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+export default app
