@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -52,29 +52,53 @@ const PLANS = [
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<1 | 2 | 3>(1);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setIsAuthenticated(!!user);
+    setLoading(false);
+  };
 
   const calculatePrice = (basePrice: number, months: 1 | 2 | 3) => {
     let totalPrice = basePrice;
 
     if (months === 2) {
-      totalPrice = basePrice * 1.15; // 15% increase for 2-month access
+      totalPrice = basePrice * 1.15;
     } else if (months === 3) {
-      totalPrice = basePrice * 1.40; // 40% increase for 3-month access
+      totalPrice = basePrice * 1.40;
     }
 
     return totalPrice;
   };
 
   const handleSubscribe = async (planId: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      router.push('/login?redirect=/pricing');
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      // Store plan details in localStorage for after login
+      const plan = PLANS.find(p => p.id === planId);
+      const totalPrice = calculatePrice(plan!.basePrice, billingCycle);
+      
+      localStorage.setItem('pendingPurchase', JSON.stringify({
+        plan: planId,
+        cycle: billingCycle,
+        totalPrice: totalPrice.toFixed(2),
+        credits: plan!.credits
+      }));
+
+      // Redirect to signup page
+      router.push('/signup?redirect=payment');
       return;
     }
 
+    // User is authenticated, proceed to payment
     const plan = PLANS.find(p => p.id === planId);
     const totalPrice = calculatePrice(plan!.basePrice, billingCycle);
     
@@ -186,11 +210,12 @@ export default function PricingPage() {
 
                 <button
                   onClick={() => handleSubscribe(plan.id)}
+                  disabled={loading}
                   className={`w-full py-3 rounded-xl font-semibold transition-all ${
                     plan.popular
                       ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white'
                       : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
-                  }`}
+                  } disabled:opacity-50`}
                 >
                   Get Started
                 </button>

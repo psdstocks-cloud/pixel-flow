@@ -2,14 +2,19 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 function SuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const supabase = createClient();
   const credits = searchParams.get('credits') || '0';
   const [countdown, setCountdown] = useState(5);
+  const [nextPaymentDate, setNextPaymentDate] = useState('');
 
   useEffect(() => {
+    fetchNextPayment();
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -23,6 +28,29 @@ function SuccessContent() {
 
     return () => clearInterval(timer);
   }, [router]);
+
+  const fetchNextPayment = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('end_date')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('end_date', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (subscription?.end_date) {
+      const date = new Date(subscription.end_date);
+      setNextPaymentDate(date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }));
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center px-4">
@@ -43,13 +71,21 @@ function SuccessContent() {
         </p>
 
         {/* Credits Added */}
-        <div className="mb-8 p-6 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-400/30 rounded-2xl">
+        <div className="mb-6 p-6 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-400/30 rounded-2xl">
           <div className="text-white/70 text-sm mb-2">Credits Added</div>
           <div className="text-5xl font-bold text-green-400">
             +{credits}
           </div>
           <div className="text-white/60 text-sm mt-2">credits</div>
         </div>
+
+        {/* Next Payment Date */}
+        {nextPaymentDate && (
+          <div className="mb-8 p-4 bg-white/5 rounded-lg">
+            <div className="text-white/70 text-sm">Subscription expires on</div>
+            <div className="text-white font-semibold">{nextPaymentDate}</div>
+          </div>
+        )}
 
         {/* Auto-redirect notice */}
         <p className="text-white/60 text-sm mb-4">
