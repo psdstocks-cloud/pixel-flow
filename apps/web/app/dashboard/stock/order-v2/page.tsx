@@ -370,10 +370,20 @@ export default function OrderV2Page() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-8">
       <div className="max-w-6xl mx-auto">
+        {/* NEW UNIFIED HEADER WITH PROMINENT BALANCE */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-white">Stock Order (v2)</h1>
-          <div className="text-white/90 text-lg font-semibold">
-            Balance: <span className="text-green-400">{userBalance}</span> Credits
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">Stock Order</h1>
+            <p className="text-white/60">Download premium stock images with credits</p>
+          </div>
+          
+          {/* SINGLE PROMINENT BALANCE DISPLAY */}
+          <div className="backdrop-blur-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-400/30 rounded-2xl px-8 py-4">
+            <div className="text-white/70 text-sm mb-1">Your Balance</div>
+            <div className="flex items-center gap-2">
+              <span className="text-4xl font-bold text-green-400">{userBalance}</span>
+              <span className="text-white/90 text-xl">Credits</span>
+            </div>
           </div>
         </div>
 
