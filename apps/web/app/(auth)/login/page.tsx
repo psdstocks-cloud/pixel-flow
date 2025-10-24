@@ -2,11 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 
-
 import { useState, FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { validateEmail } from '@/lib/validators'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -21,6 +21,14 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
 
+    // Validate email
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setError(emailError)
+      setIsLoading(false)
+      return
+    }
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -29,7 +37,24 @@ export default function LoginPage() {
 
       if (error) throw error
 
-      router.push('/dashboard')
+      // ✅ ADD THIS SECTION AFTER SUCCESSFUL LOGIN
+      // Check for pending purchase from pricing page
+      const pendingPurchase = localStorage.getItem('pendingPurchase')
+      
+      if (pendingPurchase) {
+        // User came from pricing page → redirect to payment
+        const purchase = JSON.parse(pendingPurchase)
+        localStorage.removeItem('pendingPurchase') // Clear after reading
+        
+        router.push(
+          `/payment?plan=${purchase.plan}&cycle=${purchase.cycle}&totalPrice=${purchase.totalPrice}&credits=${purchase.credits}`
+        )
+      } else {
+        // Regular login → go to dashboard
+        router.push('/dashboard/stock/order-v2')
+      }
+      // ✅ END OF ADDED SECTION
+      
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid email or password')
