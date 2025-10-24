@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 interface StockInfo {
   image: string;
@@ -29,34 +30,109 @@ interface Order {
 
 interface StockSite {
   active: boolean;
-  name: string;
-  url: string;
+  price: number;
 }
 
 const NEHTW_API_KEY = 'A8K9bV5s2OX12E8cmS4I96mtmSNzv7';
 const NEHTW_BASE_URL = 'https://nehtw.com/api';
-const CREDITS_PER_DOWNLOAD = 2; // Fixed price for all downloads
+const CREDITS_PER_DOWNLOAD = 2;
 
-// Supported stock sites with their URLs
-const STOCK_SITES: Record<string, StockSite> = {
-  shutterstock: { active: true, name: 'Shutterstock', url: 'https://www.shutterstock.com' },
-  adobestock: { active: true, name: 'Adobe Stock', url: 'https://stock.adobe.com' },
-  freepik: { active: true, name: 'Freepik', url: 'https://www.freepik.com' },
-  istockphoto: { active: true, name: 'iStock', url: 'https://www.istockphoto.com' },
-  depositphotos: { active: true, name: 'Depositphotos', url: 'https://depositphotos.com' },
-  '123rf': { active: true, name: '123RF', url: 'https://www.123rf.com' },
-  dreamstime: { active: true, name: 'Dreamstime', url: 'https://www.dreamstime.com' },
-  pond5: { active: true, name: 'Pond5', url: 'https://www.pond5.com' },
+// Site URLs mapping
+const SITE_URLS: Record<string, string> = {
+  shutterstock: 'https://www.shutterstock.com',
+  adobestock: 'https://stock.adobe.com',
+  freepik: 'https://www.freepik.com',
+  istockphoto: 'https://www.istockphoto.com',
+  depositphotos: 'https://depositphotos.com',
+  '123rf': 'https://www.123rf.com',
+  dreamstime: 'https://www.dreamstime.com',
+  pond5: 'https://www.pond5.com',
+  vecteezy: 'https://www.vecteezy.com',
+  pixabay: 'https://pixabay.com',
+  unsplash: 'https://unsplash.com',
+  pexels: 'https://www.pexels.com',
+  envato: 'https://elements.envato.com',
+  canva: 'https://www.canva.com',
+  vectorstock: 'https://www.vectorstock.com',
 };
 
 export default function OrderV2Page() {
   const [urls, setUrls] = useState<string>('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [userBalance, setUserBalance] = useState<number>(20); // Mock balance - replace with real Supabase data
+  const [stockSites, setStockSites] = useState<Record<string, StockSite>>({});
+  const [userBalance, setUserBalance] = useState<number>(0);
+  const [userId, setUserId] = useState<string | null>(null);
   const [showAllSites, setShowAllSites] = useState(false);
+  const supabase = createClient();
 
-  // Extract site and ID from URL
+  // Fetch user data
+  useEffect(() => {
+    fetchUserData();
+    fetchStockSites();
+  }, []);
+
+  const fetchUserData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      setUserId(user.id);
+      // Fetch user credits from your users table
+      const { data } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('id', user.id)
+        .single();
+      
+      if (data) {
+        setUserBalance(data.credits || 0);
+      }
+    }
+  };
+
+  const fetchStockSites = async () => {
+    try {
+      const response = await fetch(`${NEHTW_BASE_URL}/stocksites`, {
+        headers: { 'X-Api-Key': NEHTW_API_KEY },
+      });
+      const data = await response.json();
+      setStockSites(data);
+    } catch (error) {
+      console.error('Failed to fetch stock sites:', error);
+    }
+  };
+
+  // Deduct credits from Supabase
+  const deductCredits = async (amount: number) => {
+    if (!userId) return false;
+
+    const { error } = await supabase
+      .from('users')
+      .update({ credits: userBalance - amount })
+      .eq('id', userId);
+
+    if (!error) {
+      setUserBalance(prev => prev - amount);
+      return true;
+    }
+    return false;
+  };
+
+  // Save download to database
+  const saveDownload = async (order: Order) => {
+    if (!userId) return;
+
+    await supabase.from('downloads').insert({
+      user_id: userId,
+      stock_site: order.site,
+      stock_id: order.stockId,
+      title: order.stockInfo?.title,
+      thumbnail: order.stockInfo?.image,
+      download_url: order.downloadUrl,
+      status: 'ready',
+      credits_used: CREDITS_PER_DOWNLOAD,
+    });
+  };
+
   const parseStockUrl = (url: string): { site: string; id: string } | null => {
     try {
       const urlObj = new URL(url);
@@ -80,6 +156,16 @@ export default function OrderV2Page() {
         const match = url.match(/gm(\d+)/);
         return { site: 'istockphoto', id: match ? match[1] : '' };
       }
+
+      if (urlObj.hostname.includes('dreamstime.com')) {
+        const match = url.match(/image(\d+)/);
+        return { site: 'dreamstime', id: match ? match[1] : '' };
+      }
+
+      if (urlObj.hostname.includes('depositphotos.com')) {
+        const match = url.match(/(\d+)\.html/);
+        return { site: 'depositphotos', id: match ? match[1] : '' };
+      }
       
       return null;
     } catch {
@@ -87,7 +173,6 @@ export default function OrderV2Page() {
     }
   };
 
-  // Get stock info (preview, title, etc)
   const getStockInfo = async (site: string, id: string): Promise<StockInfo | null> => {
     try {
       const response = await fetch(
@@ -100,7 +185,6 @@ export default function OrderV2Page() {
       const result = await response.json();
       
       if (result.success) {
-        // Override cost with our fixed price
         return { ...result.data, cost: CREDITS_PER_DOWNLOAD };
       }
       return null;
@@ -110,7 +194,6 @@ export default function OrderV2Page() {
     }
   };
 
-  // Create preview order
   const createPreviewOrder = async (url: string): Promise<Order | null> => {
     const parsed = parseStockUrl(url);
     if (!parsed) {
@@ -134,10 +217,16 @@ export default function OrderV2Page() {
     };
   };
 
-  // Confirm and create actual order
   const confirmOrder = async (order: Order) => {
     if (userBalance < CREDITS_PER_DOWNLOAD) {
       alert('Insufficient credits!');
+      return;
+    }
+
+    // Deduct credits FIRST
+    const success = await deductCredits(CREDITS_PER_DOWNLOAD);
+    if (!success) {
+      alert('Failed to deduct credits. Please try again.');
       return;
     }
 
@@ -152,9 +241,6 @@ export default function OrderV2Page() {
       const data = await response.json();
       
       if (data.success) {
-        // Deduct credits from user balance
-        setUserBalance(prev => prev - CREDITS_PER_DOWNLOAD);
-        
         setOrders(prev =>
           prev.map(o =>
             o.id === order.id
@@ -162,23 +248,33 @@ export default function OrderV2Page() {
               : o
           )
         );
-        
-        // TODO: Update user balance in Supabase
+      } else {
+        // Refund credits if order failed
+        await supabase
+          .from('users')
+          .update({ credits: userBalance })
+          .eq('id', userId);
       }
     } catch (error) {
       console.error('Failed to create order:', error);
+      // Refund credits on error
+      await supabase
+        .from('users')
+        .update({ credits: userBalance })
+        .eq('id', userId);
+      
       setOrders(prev =>
         prev.map(o => (o.id === order.id ? { ...o, status: 'failed' } : o))
       );
     }
   };
 
-  // Handle URL submission
   const handleSubmit = async () => {
     const urlList = urls
       .split('\n')
       .map(u => u.trim())
-      .filter(u => u.length > 0);
+      .filter(u => u.length > 0)
+      .slice(0, 5); // Limit to 5 URLs
 
     if (urlList.length === 0) return;
 
@@ -197,7 +293,6 @@ export default function OrderV2Page() {
     setLoading(false);
   };
 
-  // Check order status
   const checkOrderStatus = async (taskId: string): Promise<string> => {
     try {
       const response = await fetch(
@@ -215,7 +310,6 @@ export default function OrderV2Page() {
     }
   };
 
-  // Get download link
   const getDownloadLink = async (taskId: string): Promise<string | null> => {
     try {
       const response = await fetch(
@@ -237,7 +331,6 @@ export default function OrderV2Page() {
     }
   };
 
-  // Poll order status
   useEffect(() => {
     const interval = setInterval(async () => {
       const activeOrders = orders.filter(
@@ -251,13 +344,18 @@ export default function OrderV2Page() {
         
         if (status === 'ready') {
           const downloadUrl = await getDownloadLink(order.task_id);
+          const updatedOrder = { ...order, status: 'ready' as const, downloadUrl: downloadUrl || undefined };
+          
           setOrders(prev =>
             prev.map(o =>
-              o.id === order.id
-                ? { ...o, status: 'ready', downloadUrl: downloadUrl || undefined }
-                : o
+              o.id === order.id ? updatedOrder : o
             )
           );
+
+          // Save to downloads database
+          if (downloadUrl) {
+            await saveDownload({ ...order, downloadUrl, status: 'ready' });
+          }
         } else if (status === 'error' || status === 'failed') {
           setOrders(prev =>
             prev.map(o => (o.id === order.id ? { ...o, status: 'failed' } : o))
@@ -273,14 +371,12 @@ export default function OrderV2Page() {
     return () => clearInterval(interval);
   }, [orders]);
 
-  const displayedSites = showAllSites 
-    ? Object.entries(STOCK_SITES) 
-    : Object.entries(STOCK_SITES).slice(0, 4);
+  const activeSites = Object.entries(stockSites).filter(([_, site]) => site.active);
+  const displayedSites = showAllSites ? activeSites : activeSites.slice(0, 4);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-8">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-white">Stock Order (v2)</h1>
           <div className="text-white/90 text-lg font-semibold">
@@ -288,11 +384,10 @@ export default function OrderV2Page() {
           </div>
         </div>
 
-        {/* Supported Sites - Compact Pills Design */}
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white/90 font-semibold text-lg">
-              Supported Stock Sites ({Object.keys(STOCK_SITES).length})
+              Supported Stock Sites ({activeSites.length})
             </h2>
             <span className="text-yellow-400 font-semibold text-sm">
               {CREDITS_PER_DOWNLOAD} Credits per download
@@ -300,44 +395,43 @@ export default function OrderV2Page() {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {displayedSites.map(([key, site]) => (
+            {displayedSites.map(([key, _]) => (
               <a
                 key={key}
-                href={site.url}
+                href={SITE_URLS[key] || `https://${key}.com`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-white/10 rounded-full transition-all duration-200 flex items-center gap-2"
               >
                 <span className="w-2 h-2 bg-green-400 rounded-full group-hover:animate-pulse"></span>
-                <span className="text-white/90 text-sm font-medium">{site.name}</span>
+                <span className="text-white/90 text-sm font-medium capitalize">{key}</span>
                 <svg className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
             ))}
             
-            {Object.keys(STOCK_SITES).length > 4 && (
+            {activeSites.length > 4 && (
               <button
                 onClick={() => setShowAllSites(!showAllSites)}
                 className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all duration-200"
               >
                 <span className="text-white/70 text-sm">
-                  {showAllSites ? 'Show Less' : `+${Object.keys(STOCK_SITES).length - 4} More`}
+                  {showAllSites ? 'Show Less' : `+${activeSites.length - 4} More`}
                 </span>
               </button>
             )}
           </div>
         </div>
 
-        {/* URL Input */}
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 mb-6">
           <label className="block text-white/90 font-semibold mb-3">
-            Paste Stock URLs (one per line)
+            Paste Stock URLs (one per line, max 5)
           </label>
           <textarea
             value={urls}
             onChange={(e) => setUrls(e.target.value)}
-            placeholder="https://www.shutterstock.com/image-vector/heart-logo-love-medical-romance-charity-2365327491"
+            placeholder="https://www.shutterstock.com/image-vector/heart-logo-2365327491"
             className="w-full h-32 px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:border-purple-500 resize-none"
           />
           <button
@@ -345,28 +439,24 @@ export default function OrderV2Page() {
             disabled={loading || !urls.trim()}
             className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {loading ? 'Loading Preview...' : 'Get Preview'}
+            {loading ? 'Loading Previews...' : 'Get Previews'}
           </button>
         </div>
 
-        {/* Orders List */}
         <div className="space-y-4">
           {orders.map((order) => (
             <div
               key={order.id}
               className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-xl p-6"
             >
-              {/* Preview Mode */}
               {order.status === 'preview' && order.stockInfo && (
                 <div className="flex gap-6">
-                  {/* Image Preview */}
                   <img
                     src={order.stockInfo.image}
                     alt={order.stockInfo.title}
                     className="w-48 h-48 object-cover rounded-lg border border-white/20"
                   />
                   
-                  {/* Info */}
                   <div className="flex-1">
                     <h3 className="text-white font-semibold text-lg mb-2">
                       {order.stockInfo.title}
@@ -384,18 +474,11 @@ export default function OrderV2Page() {
                           <span className="text-white/50">Author:</span> {order.stockInfo.author}
                         </p>
                       )}
-                      {order.stockInfo.sizeInBytes && (
-                        <p>
-                          <span className="text-white/50">Size:</span>{' '}
-                          {(parseInt(order.stockInfo.sizeInBytes) / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      )}
                       <p className="text-lg font-semibold text-yellow-300">
                         Cost: {CREDITS_PER_DOWNLOAD} Credits
                       </p>
                     </div>
                     
-                    {/* Confirm Button */}
                     <button
                       onClick={() => confirmOrder(order)}
                       disabled={userBalance < CREDITS_PER_DOWNLOAD}
@@ -409,14 +492,10 @@ export default function OrderV2Page() {
                 </div>
               )}
 
-              {/* Processing/Completed Mode */}
               {order.status !== 'preview' && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex-1">
-                      <p className="text-white/60 text-sm mb-1">
-                        {STOCK_SITES[order.site]?.name || order.site} - {order.stockId}
-                      </p>
                       {order.stockInfo && (
                         <p className="text-white/90 font-medium">{order.stockInfo.title}</p>
                       )}
@@ -439,11 +518,6 @@ export default function OrderV2Page() {
                       {order.status === 'ready' && (
                         <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-sm">
                           Ready
-                        </span>
-                      )}
-                      {order.status === 'failed' && (
-                        <span className="px-3 py-1 bg-red-500/20 text-red-300 rounded-full text-sm">
-                          Failed
                         </span>
                       )}
                     </div>
