@@ -3,6 +3,9 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { requireAuth, requireRole } from './middleware/auth'
 import { redisRateLimit } from './middleware/redis-rate-limit'
+import { errorHandler } from './middleware/error-handler'
+import { asyncHandler } from './lib/async-handler'
+import { NotFoundError, BadRequestError, ValidationError } from './lib/errors'
 import { prisma } from '@pixel-flow/database'
 import paymentsRouter from './routes/payments'
 
@@ -71,345 +74,283 @@ app.get('/health', redisRateLimit('public'), (req, res) => {
 app.use('/api/payments', redisRateLimit('api'), paymentsRouter)
 
 // ============================================
-// USER ROUTES (API RATE LIMIT)
+// USER ROUTES (API RATE LIMIT) - WITH ERROR HANDLING
 // ============================================
 
-app.get('/api/user/profile', redisRateLimit('api'), requireAuth, async (req, res) => {
-  try {
-    const profile = await prisma.profile.findUnique({
-      where: { id: req.user!.id },
-      include: {
-        subscriptions: {
-          where: { status: 'active' },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        },
-        balance: true
-      }
-    })
-    
-    if (!profile) {
-      return res.status(404).json({ error: 'Profile not found' })
-    }
-    
-    res.json({ success: true, profile })
-  } catch (error) {
-    console.error('Profile fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch profile' })
-  }
-})
-
-app.put('/api/user/profile', redisRateLimit('api'), requireAuth, async (req, res) => {
-  try {
-    const { fullName, avatarUrl } = req.body
-
-    const profile = await prisma.profile.update({
-      where: { id: req.user!.id },
-      data: { fullName, avatarUrl }
-    })
-
-    res.json({ success: true, profile })
-  } catch (error) {
-    console.error('Profile update error:', error)
-    res.status(500).json({ error: 'Failed to update profile' })
-  }
-})
-
-app.get('/api/orders', redisRateLimit('api'), requireAuth, async (req, res) => {
-  try {
-    const orders = await prisma.order.findMany({
-      where: { userId: req.user!.id },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            title: true,
-            thumbnailUrl: true,
-            category: true
-          }
-        }
+app.get('/api/user/profile', redisRateLimit('api'), requireAuth, asyncHandler(async (req, res) => {
+  const profile = await prisma.profile.findUnique({
+    where: { id: req.user!.id },
+    include: {
+      subscriptions: {
+        where: { status: 'active' },
+        orderBy: { createdAt: 'desc' },
+        take: 1
       },
-      orderBy: { createdAt: 'desc' },
-      take: 50
-    })
-    
-    res.json({ success: true, orders })
-  } catch (error) {
-    console.error('Orders fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch orders' })
-  }
-})
-
-app.get('/api/downloads', redisRateLimit('api'), requireAuth, async (req, res) => {
-  try {
-    const downloads = await prisma.download.findMany({
-      where: { 
-        userId: req.user!.id,
-        expiresAt: { gt: new Date() }
-      },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            title: true,
-            thumbnailUrl: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50
-    })
-    
-    res.json({ success: true, downloads })
-  } catch (error) {
-    console.error('Downloads fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch downloads' })
-  }
-})
-
-app.get('/api/transactions', redisRateLimit('api'), requireAuth, async (req, res) => {
-  try {
-    const transactions = await prisma.transaction.findMany({
-      where: { userId: req.user!.id },
-      orderBy: { createdAt: 'desc' },
-      take: 100
-    })
-    
-    res.json({ success: true, transactions })
-  } catch (error) {
-    console.error('Transactions fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch transactions' })
-  }
-})
-
-// ============================================
-// PACKAGE ROUTES (PUBLIC)
-// ============================================
-
-app.get('/api/packages', redisRateLimit('public'), async (req, res) => {
-  try {
-    const packages = await prisma.package.findMany({
-      where: { isActive: true },
-      orderBy: [
-        { isPopular: 'desc' },
-        { price: 'asc' }
-      ]
-    })
-    
-    res.json({ success: true, packages })
-  } catch (error) {
-    console.error('Packages fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch packages' })
-  }
-})
-
-// ============================================
-// ASSET ROUTES (PUBLIC)
-// ============================================
-
-app.get('/api/assets', redisRateLimit('public'), async (req, res) => {
-  try {
-    const { category, search, page = '1', limit = '20' } = req.query
-
-    const pageNum = parseInt(page as string)
-    const limitNum = parseInt(limit as string)
-    const skip = (pageNum - 1) * limitNum
-
-    const where: any = {}
-
-    if (category) {
-      where.category = category
+      balance: true
     }
+  })
+  
+  if (!profile) {
+    throw new NotFoundError('Profile not found')
+  }
+  
+  res.json({ success: true, profile })
+}))
 
-    if (search) {
-      where.OR = [
-        { title: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } }
-      ]
-    }
+app.put('/api/user/profile', redisRateLimit('api'), requireAuth, asyncHandler(async (req, res) => {
+  const { fullName, avatarUrl } = req.body
 
-    const [assets, total] = await Promise.all([
-      prisma.asset.findMany({
-        where,
+  if (!fullName || fullName.trim().length === 0) {
+    throw new ValidationError('Full name is required')
+  }
+
+  const profile = await prisma.profile.update({
+    where: { id: req.user!.id },
+    data: { fullName, avatarUrl }
+  })
+
+  res.json({ success: true, profile })
+}))
+
+app.get('/api/orders', redisRateLimit('api'), requireAuth, asyncHandler(async (req, res) => {
+  const orders = await prisma.order.findMany({
+    where: { userId: req.user!.id },
+    include: {
+      asset: {
         select: {
           id: true,
           title: true,
-          description: true,
-          category: true,
-          tags: true,
           thumbnailUrl: true,
-          isPremium: true,
-          cost: true,
-          downloadsCount: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limitNum
-      }),
-      prisma.asset.count({ where })
-    ])
-
-    res.json({
-      success: true,
-      assets,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        totalPages: Math.ceil(total / limitNum)
-      }
-    })
-  } catch (error) {
-    console.error('Assets fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch assets' })
-  }
-})
-
-app.get('/api/assets/:id', redisRateLimit('public'), async (req, res) => {
-  try {
-    const asset = await prisma.asset.findUnique({
-      where: { id: req.params.id },
-      include: {
-        creator: {
-          select: {
-            id: true,
-            fullName: true,
-            avatarUrl: true
-          }
+          category: true
         }
       }
-    })
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50
+  })
+  
+  res.json({ success: true, orders })
+}))
 
-    if (!asset) {
-      return res.status(404).json({ error: 'Asset not found' })
-    }
+app.get('/api/downloads', redisRateLimit('api'), requireAuth, asyncHandler(async (req, res) => {
+  const downloads = await prisma.download.findMany({
+    where: { 
+      userId: req.user!.id,
+      expiresAt: { gt: new Date() }
+    },
+    include: {
+      asset: {
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50
+  })
+  
+  res.json({ success: true, downloads })
+}))
 
-    res.json({ success: true, asset })
-  } catch (error) {
-    console.error('Asset fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch asset' })
+app.get('/api/transactions', redisRateLimit('api'), requireAuth, asyncHandler(async (req, res) => {
+  const transactions = await prisma.transaction.findMany({
+    where: { userId: req.user!.id },
+    orderBy: { createdAt: 'desc' },
+    take: 100
+  })
+  
+  res.json({ success: true, transactions })
+}))
+
+// ============================================
+// PACKAGE ROUTES (PUBLIC) - WITH ERROR HANDLING
+// ============================================
+
+app.get('/api/packages', redisRateLimit('public'), asyncHandler(async (req, res) => {
+  const packages = await prisma.package.findMany({
+    where: { isActive: true },
+    orderBy: [
+      { isPopular: 'desc' },
+      { price: 'asc' }
+    ]
+  })
+  
+  res.json({ success: true, packages })
+}))
+
+// ============================================
+// ASSET ROUTES (PUBLIC) - WITH ERROR HANDLING
+// ============================================
+
+app.get('/api/assets', redisRateLimit('public'), asyncHandler(async (req, res) => {
+  const { category, search, page = '1', limit = '20' } = req.query
+
+  const pageNum = parseInt(page as string)
+  const limitNum = parseInt(limit as string)
+
+  if (isNaN(pageNum) || pageNum < 1) {
+    throw new ValidationError('Invalid page number')
   }
-})
 
-// ============================================
-// ADMIN ROUTES (AUTH RATE LIMIT - STRICT)
-// ============================================
+  if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+    throw new ValidationError('Invalid limit (must be between 1 and 100)')
+  }
 
-app.get('/api/admin/users', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
-  try {
-    const users = await prisma.profile.findMany({
+  const skip = (pageNum - 1) * limitNum
+
+  const where: any = {}
+
+  if (category) {
+    where.category = category
+  }
+
+  if (search) {
+    where.OR = [
+      { title: { contains: search as string, mode: 'insensitive' } },
+      { description: { contains: search as string, mode: 'insensitive' } }
+    ]
+  }
+
+  const [assets, total] = await Promise.all([
+    prisma.asset.findMany({
+      where,
       select: {
         id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        credits: true,
-        isActive: true,
-        emailVerified: true,
-        createdAt: true,
-        lastLoginAt: true,
-        _count: {
-          select: {
-            orders: true,
-            downloads: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    })
-    
-    res.json({ success: true, users })
-  } catch (error) {
-    console.error('Users fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch users' })
-  }
-})
-
-app.get('/api/admin/orders', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
-  try {
-    const orders = await prisma.order.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true
-          }
-        },
-        asset: {
-          select: {
-            id: true,
-            title: true
-          }
-        }
+        title: true,
+        description: true,
+        category: true,
+        tags: true,
+        thumbnailUrl: true,
+        isPremium: true,
+        cost: true,
+        downloadsCount: true,
+        createdAt: true
       },
       orderBy: { createdAt: 'desc' },
-      take: 100
-    })
-    
-    res.json({ success: true, orders })
-  } catch (error) {
-    console.error('Admin orders fetch error:', error)
-    res.status(500).json({ error: 'Failed to fetch orders' })
-  }
-})
+      skip,
+      take: limitNum
+    }),
+    prisma.asset.count({ where })
+  ])
 
-app.put('/api/admin/users/:id/role', redisRateLimit('auth'), requireAuth, requireRole(['admin']), async (req, res) => {
-  try {
-    const { role } = req.body
-
-    if (!['user', 'admin'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' })
+  res.json({
+    success: true,
+    assets,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
     }
+  })
+}))
 
-    const user = await prisma.profile.update({
-      where: { id: req.params.id },
-      data: { role }
-    })
+app.get('/api/assets/:id', redisRateLimit('public'), asyncHandler(async (req, res) => {
+  const asset = await prisma.asset.findUnique({
+    where: { id: req.params.id },
+    include: {
+      creator: {
+        select: {
+          id: true,
+          fullName: true,
+          avatarUrl: true
+        }
+      }
+    }
+  })
 
-    res.json({ success: true, user })
-  } catch (error) {
-    console.error('Role update error:', error)
-    res.status(500).json({ error: 'Failed to update role' })
+  if (!asset) {
+    throw new NotFoundError('Asset not found')
   }
-})
+
+  res.json({ success: true, asset })
+}))
 
 // ============================================
-// ERROR HANDLING
+// ADMIN ROUTES (AUTH RATE LIMIT - STRICT) - WITH ERROR HANDLING
 // ============================================
 
+app.get('/api/admin/users', redisRateLimit('auth'), requireAuth, requireRole(['admin']), asyncHandler(async (req, res) => {
+  const users = await prisma.profile.findMany({
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      credits: true,
+      isActive: true,
+      emailVerified: true,
+      createdAt: true,
+      lastLoginAt: true,
+      _count: {
+        select: {
+          orders: true,
+          downloads: true
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  })
+  
+  res.json({ success: true, users })
+}))
+
+app.get('/api/admin/orders', redisRateLimit('auth'), requireAuth, requireRole(['admin']), asyncHandler(async (req, res) => {
+  const orders = await prisma.order.findMany({
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          fullName: true
+        }
+      },
+      asset: {
+        select: {
+          id: true,
+          title: true
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100
+  })
+  
+  res.json({ success: true, orders })
+}))
+
+app.put('/api/admin/users/:id/role', redisRateLimit('auth'), requireAuth, requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { role } = req.body
+
+  if (!['user', 'admin'].includes(role)) {
+    throw new ValidationError('Invalid role. Must be "user" or "admin"')
+  }
+
+  const user = await prisma.profile.update({
+    where: { id: req.params.id },
+    data: { role }
+  })
+
+  res.json({ success: true, user })
+}))
+
+// ============================================
+// ERROR HANDLING (MUST BE LAST!)
+// ============================================
+
+// 404 handler - Must come before global error handler
 app.use((req, res) => {
   res.status(404).json({
-    error: 'Not Found',
-    path: req.path,
-    method: req.method,
-    timestamp: new Date().toISOString(),
+    error: 'Endpoint not found',
+    code: 'NOT_FOUND',
+    path: req.path
   })
 })
 
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Unhandled error:', {
-    error: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    url: req.url,
-    method: req.method,
-    ip: req.ip
-  })
-
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({ 
-      error: 'CORS Error',
-      message: 'Origin not allowed. Please contact support.',
-      allowedOrigins: process.env.NODE_ENV === 'development' ? allowedOrigins : undefined
-    })
-  }
-
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-  })
-})
+// Global error handler (MUST BE LAST MIDDLEWARE!)
+app.use(errorHandler)
 
 // ============================================
 // START SERVER
@@ -432,6 +373,8 @@ app.listen(PORT, HOST, () => {
   console.log(`     - Auth:         5 req/15min (admin routes)`)
   console.log(`     - API:          100 req/15min (user routes)`)
   console.log(`     - Public:       1000 req/15min (public routes)`)
+  console.log(`   • Error Handling: ✅ Sanitized responses`)
+  console.log(`   • Logging:        ✅ Structured with PII redaction`)
   console.log('\n🌍 Allowed Origins:')
   allowedOrigins.forEach(origin => console.log(`   • ${origin}`))
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
