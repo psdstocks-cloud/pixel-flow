@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-export default function PaymentPage() {
+function PaymentContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
@@ -23,13 +23,11 @@ export default function PaymentPage() {
   const handlePayment = async () => {
     setProcessing(true);
 
-    // Simulate payment processing
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Create subscription record
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + cycle);
 
@@ -44,7 +42,6 @@ export default function PaymentPage() {
       end_date: endDate.toISOString(),
     });
 
-    // Create payment record
     await supabase.from('payments').insert({
       user_id: user.id,
       amount: totalPrice,
@@ -52,7 +49,6 @@ export default function PaymentPage() {
       payment_method: 'simulation',
     });
 
-    // Add credits to user account
     await supabase
       .from('users')
       .update({ credits: credits })
@@ -68,7 +64,6 @@ export default function PaymentPage() {
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-8">
           <h1 className="text-3xl font-bold text-white mb-8">Complete Your Purchase</h1>
 
-          {/* Order Summary */}
           <div className="mb-8 p-6 bg-white/5 rounded-2xl">
             <h2 className="text-xl font-semibold text-white mb-4">Order Summary</h2>
             <div className="space-y-2 text-white/70">
@@ -95,7 +90,6 @@ export default function PaymentPage() {
             </div>
           </div>
 
-          {/* Payment Form (Simulation) */}
           <div className="space-y-4">
             <div>
               <label className="block text-white/90 mb-2 text-sm font-medium">Card Number</label>
@@ -151,5 +145,17 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    }>
+      <PaymentContent />
+    </Suspense>
   );
 }
