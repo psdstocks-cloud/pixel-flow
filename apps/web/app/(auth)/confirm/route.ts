@@ -1,4 +1,3 @@
-// apps/web/app/auth/confirm/route.ts
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
@@ -8,13 +7,16 @@ export async function GET(request: Request) {
   const type = searchParams.get('type');
 
   if (token && type === 'signup') {
-    const supabase = createClient();
-    const { error } = await supabase.auth.verifyOtp({ token, type: 'signup' });
+    const supabase = await createClient(); // ✅ ADD await here
+    const { error } = await supabase.auth.verifyOtp({ 
+      token_hash: token, 
+      type: 'email' 
+    });
     
     if (!error) {
-      return NextResponse.redirect('/dashboard/stock/order-v2');
+      return NextResponse.redirect(new URL('/dashboard/stock/order-v2', request.url));
     }
   }
 
-  return NextResponse.redirect('/login?error=verification_failed');
+  return NextResponse.redirect(new URL('/login?error=verification_failed', request.url));
 }
