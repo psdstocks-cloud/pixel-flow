@@ -29,30 +29,50 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // CRITICAL: Always use getUser() - validates with auth server
-  // Never use getSession() - can be spoofed!
+  // ============================================
+  // AUTHENTICATION & SESSION REFRESH
+  // ============================================
+
+  // CRITICAL: Use getUser() instead of getSession()
+  // getUser() validates with auth server (more secure)
+  // getSession() only checks local storage (can be spoofed)
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser()
 
+  // Also get session for token refresh
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   // Protected routes - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/profile', '/admin', '/downloads']
-  const isProtectedPath = protectedPaths.some(path => 
-    request.nextUrl.pathname.startsWith(path)
+  const protectedRoutes = ['/dashboard', '/profile', '/orders', '/admin', '/downloads']
+  const isProtectedRoute = protectedRoutes.some(route =>
+    request.nextUrl.pathname.startsWith(route)
   )
 
-  if (isProtectedPath && !user) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
+  // Redirect to login if accessing protected route without valid user
+  if (isProtectedRoute && !user) {
+    const redirectUrl = new URL('/login', request.url)
+    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+    console.log(`🔒 Protected route access denied: ${request.nextUrl.pathname}`)
     return NextResponse.redirect(redirectUrl)
   }
 
   // Redirect authenticated users away from auth pages
-  const authPaths = ['/login', '/signup']
-  if (authPaths.includes(request.nextUrl.pathname) && user) {
+  const authPages = ['/login', '/signup']
+  if (authPages.includes(request.nextUrl.pathname) && user) {
+    console.log(`✅ Authenticated user redirected from ${request.nextUrl.pathname} to /dashboard`)
     return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // Log session refresh for monitoring
+  if (session && user) {
+    const expiresIn = session.expires_at ? session.expires_at - Math.floor(Date.now() / 1000) : 0
+    if (expiresIn < 300) { // Less than 5 minutes
+      console.log(`🔄 Session expiring soon (${Math.floor(expiresIn / 60)}min) - will auto-refresh`)
+    }
   }
 
   // ============================================
