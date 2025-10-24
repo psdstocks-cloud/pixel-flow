@@ -54,7 +54,7 @@ model Profile {
 // ============================================
 
 model Balance {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @unique @map("user_id") @db.Uuid
   
   // Credits
@@ -77,7 +77,7 @@ model Balance {
 // ============================================
 
 model Subscription {
-  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId              String   @map("user_id") @db.Uuid
   
   // Subscription details
@@ -115,7 +115,7 @@ model Subscription {
 // ============================================
 
 model Payment {
-  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId          String   @map("user_id") @db.Uuid
   subscriptionId  String?  @map("subscription_id") @db.Uuid
   
@@ -144,7 +144,7 @@ model Payment {
 // ============================================
 
 model Package {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   
   // Package details
   name        String
@@ -172,7 +172,7 @@ model Package {
 }
 
 model PackagePurchase {
-  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String        @map("user_id") @db.Uuid
   packageId     String        @map("package_id") @db.Uuid
   
@@ -212,7 +212,7 @@ enum PaymentStatus {
 // ============================================
 
 model Transaction {
-  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String          @map("user_id") @db.Uuid
   
   // Transaction details
@@ -245,7 +245,7 @@ enum TransactionType {
 // ============================================
 
 model Asset {
-  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   
   // Asset details
   title          String
@@ -292,7 +292,7 @@ model Asset {
 // ============================================
 
 model Order {
-  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String      @map("user_id") @db.Uuid
   assetId       String      @map("asset_id") @db.Uuid
   
@@ -335,7 +335,7 @@ model Order {
 // ============================================
 
 model Download {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId       String    @map("user_id") @db.Uuid
   assetId      String    @map("asset_id") @db.Uuid
   orderId      String?   @map("order_id") @db.Uuid
@@ -368,4 +368,40 @@ model Download {
   @@index([orderId])
   @@index([status])
   @@map("downloads")
+}
+
+// ============================================
+// SECURITY - LOGIN ATTEMPT TRACKING
+// ============================================
+
+model LoginAttempt {
+  id            String   @id @default(cuid())
+  email         String   @db.VarChar(255)
+  ipAddress     String   @map("ip_address") @db.VarChar(45) // IPv6 max length
+  userAgent     String?  @map("user_agent") @db.Text
+  success       Boolean  @default(false)
+  failureReason String?  @map("failure_reason") @db.VarChar(100) // wrong_password, user_not_found, etc.
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([email, success, createdAt])
+  @@map("login_attempts")
+}
+
+model AccountLockout {
+  id               String    @id @default(cuid())
+  email            String    @unique @db.VarChar(255)
+  lockedAt         DateTime  @default(now()) @map("locked_at") @db.Timestamptz(6)
+  unlockAt         DateTime? @map("unlock_at") @db.Timestamptz(6) // Null = manual unlock required
+  failedAttempts   Int       @default(0) @map("failed_attempts")
+  lockReason       String    @map("lock_reason") @db.VarChar(100)
+  lockedByIp       String?   @map("locked_by_ip") @db.VarChar(45)
+  notificationSent Boolean   @default(false) @map("notification_sent")
+  unlockedAt       DateTime? @map("unlocked_at") @db.Timestamptz(6)
+  unlockedBy       String?   @map("unlocked_by") @db.VarChar(255) // admin email or 'auto'
+  
+  @@index([email, lockedAt])
+  @@index([unlockAt])
+  @@map("account_lockouts")
 }

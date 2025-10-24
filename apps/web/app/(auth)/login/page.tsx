@@ -7,12 +7,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { validateEmail } from '@/lib/validators'
+import Turnstile from 'react-turnstile'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [showCaptcha, setShowCaptcha] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -30,14 +33,72 @@ export default function LoginPage() {
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // ============================================
+      // SECURITY: Check lockout status first
+      // ============================================
+      const lockoutCheck = await fetch('/api/auth/check-lockout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      const lockoutData = await lockoutCheck.json()
+
+      // Account is locked
+      if (lockoutData.isLocked) {
+        setError(lockoutData.message || 'Account temporarily locked. Please try again later.')
+        setIsLoading(false)
+        return
+      }
+
+      // CAPTCHA required (3+ failed attempts)
+      if (lockoutData.requiresCaptcha && !captchaToken) {
+        setShowCaptcha(true)
+        setError('Please complete the CAPTCHA verification')
+        setIsLoading(false)
+        return
+      }
+
+      // ============================================
+      // Attempt login with Supabase
+      // ============================================
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (signInError) {
+        // Record failed attempt
+        await fetch('/api/auth/record-attempt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            success: false,
+            failureReason: signInError.message,
+            captchaToken
+          })
+        })
 
-      // ✅ ADD THIS SECTION AFTER SUCCESSFUL LOGIN
+        setError('Invalid email or password')
+        setShowCaptcha(true) // Show CAPTCHA after failed attempt
+        setCaptchaToken(null) // Reset CAPTCHA token
+        setIsLoading(false)
+        return
+      }
+
+      // ============================================
+      // LOGIN SUCCESSFUL - Record attempt
+      // ============================================
+      await fetch('/api/auth/record-attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          success: true
+        })
+      })
+
       // Check for pending purchase from pricing page
       const pendingPurchase = localStorage.getItem('pendingPurchase')
       
@@ -53,11 +114,10 @@ export default function LoginPage() {
         // Regular login → go to dashboard
         router.push('/dashboard/stock/order-v2')
       }
-      // ✅ END OF ADDED SECTION
       
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid email or password')
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
     } finally {
       setIsLoading(false)
     }
@@ -130,6 +190,19 @@ export default function LoginPage() {
             </label>
           </div>
 
+          {/* CAPTCHA Section - Shows after 3 failed attempts */}
+          {showCaptcha && (
+            <div className="flex justify-center py-4">
+              <Turnstile
+                sitekey={process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY!}
+                onVerify={(token) => setCaptchaToken(token)}
+                onError={() => setCaptchaToken(null)}
+                onExpire={() => setCaptchaToken(null)}
+                theme="dark"
+              />
+            </div>
+          )}
+
           <div className="flex justify-end">
             <Link 
               href="/forgot-password" 
@@ -141,7 +214,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || (showCaptcha && !captchaToken)}
             className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-purple-500/50 transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             {isLoading ? (

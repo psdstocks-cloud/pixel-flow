@@ -1,0 +1,182 @@
+/**
+ * Login Attempt Tracking Service
+ * Handles brute-force protection and account lockout
+ */
+
+import { prisma } from '@pixel-flow/database'
+import { logger } from '../lib/logger'
+
+interface LoginAttemptData {
+  email: string
+  ipAddress: string
+  userAgent?: string
+  success: boolean
+  failureReason?: string
+}
+
+interface LockoutStatus {
+  isLocked: boolean
+  requiresCaptcha: boolean
+  failedAttempts: number
+  unlockAt?: Date
+  message?: string
+}
+
+export class LoginAttemptService {
+  // Configuration
+  private static readonly LOCKOUT_THRESHOLD = 10 // Lock after 10 failed attempts
+  private static readonly CAPTCHA_THRESHOLD = 3 // Require CAPTCHA after 3 failed attempts
+  private static readonly LOCKOUT_DURATION_HOURS = 1 // Lock for 1 hour
+  private static readonly TRACKING_WINDOW_HOURS = 1 // Track attempts within 1 hour
+
+  /**
+   * Record a login attempt
+   */
+  static async recordAttempt(data: LoginAttemptData): Promise<void> {
+    try {
+      await prisma.loginAttempt.create({
+        data: {
+          email: data.email.toLowerCase(),
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent,
+          success: data.success,
+          failureReason: data.failureReason
+        }
+      })
+
+      logger.info('Login attempt recorded', {
+        email: data.email,
+        success: data.success,
+        ip: data.ipAddress
+      })
+    } catch (error) {
+      logger.error('Failed to record login attempt', { error, email: data.email })
+    }
+  }
+
+  /**
+   * Check if account is locked or requires CAPTCHA
+   */
+  static async checkLockoutStatus(email: string): Promise<LockoutStatus> {
+    const normalizedEmail = email.toLowerCase()
+
+    // Check for active lockout
+    const activeLockout = await prisma.accountLockout.findFirst({
+      where: {
+        email: normalizedEmail,
+        OR: [
+          { unlockAt: { gt: new Date() } }, // Time-based lock
+          { unlockAt: null } // Manual unlock required
+        ],
+        unlockedAt: null
+      }
+    })
+
+    if (activeLockout) {
+      return {
+        isLocked: true,
+        requiresCaptcha: true,
+        failedAttempts: activeLockout.failedAttempts,
+        unlockAt: activeLockout.unlockAt ?? undefined,
+        message: activeLockout.unlockAt
+          ? `Account locked until ${activeLockout.unlockAt.toISOString()}`
+          : 'Account locked. Contact support to unlock.'
+      }
+    }
+
+    // Count recent failed attempts
+    const windowStart = new Date(Date.now() - this.TRACKING_WINDOW_HOURS * 60 * 60 * 1000)
+    
+    const failedAttempts = await prisma.loginAttempt.count({
+      where: {
+        email: normalizedEmail,
+        success: false,
+        createdAt: { gte: windowStart }
+      }
+    })
+
+    return {
+      isLocked: false,
+      requiresCaptcha: failedAttempts >= this.CAPTCHA_THRESHOLD,
+      failedAttempts
+    }
+  }
+
+  /**
+   * Lock account after threshold reached
+   */
+  static async lockAccount(
+    email: string,
+    ipAddress: string,
+    failedAttempts: number
+  ): Promise<void> {
+    const normalizedEmail = email.toLowerCase()
+    const unlockAt = new Date(Date.now() + this.LOCKOUT_DURATION_HOURS * 60 * 60 * 1000)
+
+    try {
+      await prisma.accountLockout.create({
+        data: {
+          email: normalizedEmail,
+          unlockAt,
+          failedAttempts,
+          lockReason: 'Too many failed login attempts',
+          lockedByIp: ipAddress
+        }
+      })
+
+      logger.warn('Account locked due to failed attempts', {
+        email: normalizedEmail,
+        failedAttempts,
+        unlockAt,
+        ip: ipAddress
+      })
+
+      // TODO: Send email notification (Step 6)
+    } catch (error) {
+      logger.error('Failed to lock account', { error, email: normalizedEmail })
+    }
+  }
+
+  /**
+   * Unlock account (admin action or successful login)
+   */
+  static async unlockAccount(email: string, unlockedBy: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase()
+
+    try {
+      await prisma.accountLockout.updateMany({
+        where: {
+          email: normalizedEmail,
+          unlockedAt: null
+        },
+        data: {
+          unlockedAt: new Date(),
+          unlockedBy
+        }
+      })
+
+      logger.info('Account unlocked', { email: normalizedEmail, unlockedBy })
+    } catch (error) {
+      logger.error('Failed to unlock account', { error, email: normalizedEmail })
+    }
+  }
+
+  /**
+   * Clean up old login attempts (run periodically)
+   */
+  static async cleanupOldAttempts(): Promise<void> {
+    const cutoffDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 days
+
+    try {
+      const result = await prisma.loginAttempt.deleteMany({
+        where: {
+          createdAt: { lt: cutoffDate }
+        }
+      })
+
+      logger.info('Cleaned up old login attempts', { deleted: result.count })
+    } catch (error) {
+      logger.error('Failed to cleanup login attempts', { error })
+    }
+  }
+}
