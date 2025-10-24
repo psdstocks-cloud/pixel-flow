@@ -10,6 +10,16 @@ import accountRoutes from './routes/account.routes';
 dotenv.config();
 
 const app = express();
+app.use(cors({
+  origin: [
+    'https://pixel-flow-sigma.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key']
+}));
 
 // ===== CORS CONFIGURATION =====
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
