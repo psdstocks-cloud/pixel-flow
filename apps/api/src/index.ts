@@ -407,13 +407,16 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 // START SERVER
 // ============================================
 
-const PORT = Number(process.env.PORT) || 3001
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 API server running on port ${PORT}`)
+const PORT = Number(process.env.PORT) || 3001
+const HOST = process.env.NODE_ENV === 'production' ? '::' : '0.0.0.0'
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 API server running on ${HOST}:${PORT}`)
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`)
   console.log(`🔒 CORS enabled for: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`)
-  console.log(`✅ Health check: http://localhost:${PORT}/health`)
+  console.log(`✅ Health check: http://${HOST}:${PORT}/health`)
 })
+
 
 export default app
