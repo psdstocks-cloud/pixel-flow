@@ -54,47 +54,13 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Protect dashboard routes
-  if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Protect other authenticated routes
-  const protectedPaths = ['/account-insights', '/ai-generation', '/stock', '/download']
-  const isProtectedPath = protectedPaths.some(path => 
-    request.nextUrl.pathname.startsWith(path)
-  )
-  
-  if (isProtectedPath && !user) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Redirect authenticated users away from auth pages
-  const authPaths = ['/login', '/signup', '/forgot-password', '/reset-password']
-  const isAuthPath = authPaths.some(path => 
-    request.nextUrl.pathname === path
-  )
-  
-  if (isAuthPath && user) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
+  await supabase.auth.getUser()
 
   return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public assets (images, etc.)
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

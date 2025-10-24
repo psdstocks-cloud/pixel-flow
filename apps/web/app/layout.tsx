@@ -2,34 +2,23 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ 
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-})
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'PixelFlow - All your creative workflows in one place',
-  description: 'Stock images, AI generation, and design tools for visual artists. Pay per use with credits that never expire.',
-  keywords: ['stock images', 'AI image generation', 'background removal', 'visual design tools'],
-  authors: [{ name: 'PixelFlow' }],
-  openGraph: {
-    title: 'PixelFlow - All your creative workflows in one place',
-    description: 'Stock images, AI generation, and design tools for visual artists.',
-    type: 'website',
-  },
+  title: 'PixelFlow',
+  description: 'Premium stock images platform',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+// ✅ Force dynamic rendering for all pages
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="antialiased">
+    <html lang="en">
+      <body className={inter.className}>
         {children}
       </body>
     </html>
-  )
+  );
 }
