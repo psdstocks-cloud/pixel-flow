@@ -25,6 +25,22 @@ import { SystemConfigService } from './services/system-config.service'
 const app = express()
 
 // ============================================
+// HEALTH CHECK - BEFORE ALL MIDDLEWARE!
+// ============================================
+// Railway needs instant response, no middleware delays
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' })
+})
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    service: 'pixel-flow-api',
+    version: '2.0.0',
+  })
+})
+
+// ============================================
 // SECURITY MIDDLEWARE
 // ============================================
 
@@ -93,28 +109,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 // ============================================
 app.use('/api/webhooks', webhookRoutes)
 app.use('/api/admin/config', adminConfigRouter)
-app.use('/api/auth', authRoutes) // app.use('/api/auth', authRoutes)
-
-// ============================================
-// HEALTH CHECK ENDPOINTS (PUBLIC RATE LIMIT)
-// ============================================
-
-app.get('/', redisRateLimit('public'), (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    service: 'pixel-flow-api',
-    timestamp: new Date().toISOString(),
-    version: '2.0.0',
-  })
-})
-
-app.get('/health', redisRateLimit('public'), (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    service: 'pixel-flow-api',
-    timestamp: new Date().toISOString(),
-  })
-})
+app.use('/api/auth', authRoutes)
 
 // ============================================
 // PAYMENT ROUTES (API RATE LIMIT)
