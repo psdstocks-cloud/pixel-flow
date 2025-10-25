@@ -28,10 +28,28 @@ const app = express()
 // SECURITY MIDDLEWARE
 // ============================================
 
-app.use(helmet())
+// Helmet with relaxed CSP for API
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: [
+        "'self'",
+        'https://pixel-flow-sigma.vercel.app',
+        'https://pixel-flow.vercel.app',
+        'https://*.vercel.app',
+        'https://*.supabase.co',
+        'https://*.railway.app'
+      ],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}))
 
 // Enhanced CORS Configuration
 const allowedOrigins = [
+  'https://pixel-flow-sigma.vercel.app',
   'https://pixel-flow.vercel.app',
   'https://pixel-flow-staging.vercel.app',
   process.env.FRONTEND_URL,
@@ -41,8 +59,19 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true)
-    if (allowedOrigins.includes(origin)) {
+    
+    // Check if origin is in allowed list or matches wildcard pattern
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin.includes('*')) {
+        const pattern = allowedOrigin.replace('*', '.*')
+        return new RegExp(pattern).test(origin)
+      }
+      return allowedOrigin === origin
+    })
+
+    if (isAllowed) {
       callback(null, true)
     } else {
       console.warn(`🚫 CORS blocked request from: ${origin}`)
@@ -470,7 +499,7 @@ app.listen(PORT, HOST, () => {
   console.log(`✅ Health Check:    http://${HOST}:${PORT}/health`)
   console.log('\n🔒 Security Features Enabled:')
   console.log(`   • Helmet:         ✅`)
-  console.log(`   • CORS:           ✅ Strict whitelist`)
+  console.log(`   • CORS:           ✅ Strict whitelist + wildcard patterns`)
   console.log(`   • Rate Limiting:  ✅ Redis-backed distributed (Upstash)`)
   console.log(`     - Auth:         5 req/15min (admin routes)`)
   console.log(`     - API:          100 req/15min (user routes)`)
