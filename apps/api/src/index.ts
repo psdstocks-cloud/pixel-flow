@@ -93,7 +93,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 // ============================================
 app.use('/api/webhooks', webhookRoutes)
 app.use('/api/admin/config', adminConfigRouter)
-app.use('/api/auth', authRoutes)
+app.use('/api/auth', authRoutes) // app.use('/api/auth', authRoutes)
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (PUBLIC RATE LIMIT)
@@ -488,7 +488,7 @@ SystemConfigService.initializeDefaults().catch(err => {
 // ============================================
 
 const PORT = Number(process.env.PORT) || 3001
-const HOST = process.env.NODE_ENV === 'production' ? '::' : '0.0.0.0'
+const HOST = process.env.HOST || '0.0.0.0'
 
 app.listen(PORT, HOST, () => {
   console.log('\n🚀 Pixel Flow API Server Started')
