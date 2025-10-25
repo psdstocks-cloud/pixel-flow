@@ -36,7 +36,7 @@ export default function LoginPage() {
       // ============================================
       // SECURITY: Check lockout status first
       // ============================================
-      const lockoutCheck = await fetch('/api/auth/check-lockout', {
+      const lockoutCheck = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/check-lockout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -69,7 +69,7 @@ export default function LoginPage() {
 
       if (signInError) {
         // Record failed attempt
-        await fetch('/api/auth/record-attempt', {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/record-attempt`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -90,7 +90,7 @@ export default function LoginPage() {
       // ============================================
       // LOGIN SUCCESSFUL - Record attempt
       // ============================================
-      await fetch('/api/auth/record-attempt', {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/record-attempt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,7 +205,7 @@ export default function LoginPage() {
 
           <div className="flex justify-end">
             <Link 
-              href="/forgot-password" 
+              href="/reset-password" 
               className="text-sm text-blue-300 hover:text-blue-200 transition-colors duration-200"
             >
               Forgot password?

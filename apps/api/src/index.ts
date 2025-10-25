@@ -8,6 +8,7 @@ import { asyncHandler } from './lib/async-handler'
 import { NotFoundError, BadRequestError, ValidationError } from './lib/errors'
 import { prisma } from '@pixel-flow/database'
 import paymentsRouter from './routes/payments'
+import authRoutes from './routes/auth'
 
 // Import webhook routes
 import webhookRoutes from './routes/webhooks'
@@ -62,6 +63,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 // WEBHOOKS (Before rate limiting - no auth required)
 // ============================================
 app.use('/api/webhooks', webhookRoutes)
+app.use('/api/admin/config', adminConfigRouter)
+app.use('/api/auth', authRoutes)
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (PUBLIC RATE LIMIT)
