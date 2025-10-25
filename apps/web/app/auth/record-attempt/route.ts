@@ -1,33 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { LoginAttemptService } from '@/services/login-attempt.service'
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, success, failureReason } = await request.json()
-    const ipAddress = request.ip || request.headers.get('x-forwarded-for') || 'unknown'
-    const userAgent = request.headers.get('user-agent') || undefined
+    const body = await request.json()
+    const { email, success, failureReason } = body
 
-    await LoginAttemptService.recordAttempt({
-      email,
-      ipAddress,
-      userAgent,
-      success,
-      failureReason
-    })
-
-    // Check if account should be locked
-    if (!success) {
-      const status = await LoginAttemptService.checkLockoutStatus(email)
-      
-      if (status.failedAttempts >= 10) {
-        await LoginAttemptService.lockAccount(email, ipAddress, status.failedAttempts)
-      }
+    if (!email) {
+      return NextResponse.json(
+        { error: 'Email is required' },
+        { status: 400 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    // Get IP address from request
+    const ipAddress = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     'unknown'
+
+    // Get user agent
+    const userAgent = request.headers.get('user-agent') || undefined
+
+    // Call backend API to record login attempt
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/record-attempt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        success: success || false,
+        failureReason,
+        ipAddress,
+        userAgent
+      })
+    })
+
+    const data = await response.json()
+    return NextResponse.json(data, { status: response.status })
   } catch (error) {
+    console.error('Record login attempt error:', error)
     return NextResponse.json(
-      { error: 'Failed to record attempt' },
+      { error: 'Failed to record login attempt' },
       { status: 500 }
     )
   }

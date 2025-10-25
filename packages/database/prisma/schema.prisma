@@ -405,3 +405,110 @@ model AccountLockout {
   @@index([unlockAt])
   @@map("account_lockouts")
 }
+
+// ============================================
+// AUDIT LOGGING - GDPR, SOC 2, PCI-DSS COMPLIANCE
+// ============================================
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  
+  // Event classification
+  eventType     AuditEventType
+  eventCategory AuditEventCategory
+  severity      AuditSeverity      @default(INFO)
+  
+  // Actor information
+  userId        String?  @db.Uuid
+  userEmail     String?  @db.VarChar(255)
+  actorType     String   @default("user") @map("actor_type") // user, system, admin, api
+  
+  // Context
+  ipAddress     String   @map("ip_address") @db.VarChar(45)
+  userAgent     String?  @map("user_agent") @db.Text
+  sessionId     String?  @map("session_id") @db.VarChar(255)
+  
+  // Event details
+  action        String   @db.VarChar(100) // "USER_LOGIN", "DATA_EXPORT", etc.
+  resource      String?  @db.VarChar(255) // What was accessed/modified
+  resourceId    String?  @map("resource_id") @db.VarChar(255)
+  
+  // Change tracking (for modifications)
+  oldValue      Json?    @map("old_value") // Previous state
+  newValue      Json?    @map("new_value") // New state
+  
+  // Outcome
+  status        String   @default("success") // success, failure, error
+  errorMessage  String?  @map("error_message") @db.Text
+  
+  // Metadata
+  metadata      Json?    // Additional context
+  
+  // Compliance flags
+  isPii         Boolean  @default(false) @map("is_pii") // Contains personal data
+  isPayment     Boolean  @default(false) @map("is_payment") // Payment-related
+  requiresReview Boolean @default(false) @map("requires_review") // Flagged for manual review
+  
+  // Timestamps
+  timestamp     DateTime @default(now()) @db.Timestamptz(6)
+  
+  @@index([userId, timestamp])
+  @@index([eventType, timestamp])
+  @@index([eventCategory, timestamp])
+  @@index([ipAddress, timestamp])
+  @@index([action, timestamp])
+  @@index([isPii])
+  @@index([isPayment])
+  @@map("audit_logs")
+}
+
+enum AuditEventType {
+  AUTHENTICATION
+  AUTHORIZATION
+  DATA_ACCESS
+  DATA_MODIFICATION
+  DATA_DELETION
+  DATA_EXPORT
+  PAYMENT
+  SYSTEM_CONFIG
+  SESSION_MANAGEMENT
+  CONSENT_MANAGEMENT
+  SECURITY_EVENT
+}
+
+enum AuditEventCategory {
+  USER_MANAGEMENT
+  DATA_PROCESSING
+  FINANCIAL
+  SECURITY
+  COMPLIANCE
+  SYSTEM
+  API
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+// ============================================
+// SYSTEM CONFIGURATION
+// ============================================
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique @db.VarChar(100)
+  value       Json     // Flexible JSON value
+  description String?  @db.Text
+  category    String   @default("general") @db.VarChar(50) // "general", "security", "feature_flags", "limits"
+  isPublic    Boolean  @default(false) @map("is_public") // Can non-admins read this?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy   String?  @map("updated_by") @db.Uuid // Admin who last updated
+  
+  @@index([category])
+  @@index([isPublic])
+  @@map("system_configs")
+}

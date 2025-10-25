@@ -9,6 +9,18 @@ import { NotFoundError, BadRequestError, ValidationError } from './lib/errors'
 import { prisma } from '@pixel-flow/database'
 import paymentsRouter from './routes/payments'
 
+// Import webhook routes
+import webhookRoutes from './routes/webhooks'
+
+// Import admin config routes
+import adminConfigRouter from './routes/admin-config'
+
+// Import monitoring jobs
+import { startMonitoringJobs } from './jobs/monitoring-jobs'
+
+// Import system config service
+import { SystemConfigService } from './services/system-config.service'
+
 const app = express()
 
 // ============================================
@@ -45,6 +57,11 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// ============================================
+// WEBHOOKS (Before rate limiting - no auth required)
+// ============================================
+app.use('/api/webhooks', webhookRoutes)
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (PUBLIC RATE LIMIT)
@@ -337,6 +354,72 @@ app.put('/api/admin/users/:id/role', redisRateLimit('auth'), requireAuth, requir
 }))
 
 // ============================================
+// ADMIN AUDIT LOG ROUTES
+// ============================================
+
+app.get('/api/admin/audit-logs', redisRateLimit('auth'), requireAuth, requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { 
+    eventType, 
+    eventCategory, 
+    userId, 
+    startDate, 
+    endDate,
+    page = '1',
+    limit = '50'
+  } = req.query
+
+  const pageNum = parseInt(page as string)
+  const limitNum = parseInt(limit as string)
+  const skip = (pageNum - 1) * limitNum
+
+  const where: any = {}
+
+  if (eventType) {
+    where.eventType = eventType
+  }
+
+  if (eventCategory) {
+    where.eventCategory = eventCategory
+  }
+
+  if (userId) {
+    where.userId = userId
+  }
+
+  if (startDate || endDate) {
+    where.timestamp = {}
+    if (startDate) where.timestamp.gte = new Date(startDate as string)
+    if (endDate) where.timestamp.lte = new Date(endDate as string)
+  }
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+      skip,
+      take: limitNum
+    }),
+    prisma.auditLog.count({ where })
+  ])
+
+  res.json({
+    success: true,
+    logs,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
+    }
+  })
+}))
+
+// ============================================
+// ADMIN CONFIG ROUTES (AUTH RATE LIMIT)
+// ============================================
+app.use('/api/admin/config', redisRateLimit('auth'), adminConfigRouter)
+
+// ============================================
 // ERROR HANDLING (MUST BE LAST!)
 // ============================================
 
@@ -351,6 +434,22 @@ app.use((req, res) => {
 
 // Global error handler (MUST BE LAST MIDDLEWARE!)
 app.use(errorHandler)
+
+// ============================================
+// START MONITORING JOBS (Production Only)
+// ============================================
+
+if (process.env.NODE_ENV === 'production') {
+  console.log('🔄 Starting monitoring jobs...')
+  startMonitoringJobs()
+}
+
+// ============================================
+// INITIALIZE SYSTEM CONFIGURATIONS
+// ============================================
+SystemConfigService.initializeDefaults().catch(err => {
+  console.error('Failed to initialize system configs:', err)
+})
 
 // ============================================
 // START SERVER
@@ -375,6 +474,11 @@ app.listen(PORT, HOST, () => {
   console.log(`     - Public:       1000 req/15min (public routes)`)
   console.log(`   • Error Handling: ✅ Sanitized responses`)
   console.log(`   • Logging:        ✅ Structured with PII redaction`)
+  console.log('\n🔐 Compliance Features:')
+  console.log(`   • Audit Logging:  ✅ GDPR, SOC 2, PCI-DSS`)
+  console.log(`   • Webhooks:       ✅ Railway, Vercel, Supabase`)
+  console.log(`   • Monitoring:     ${process.env.NODE_ENV === 'production' ? '✅ Active' : '⏸️  Disabled (dev mode)'}`)
+  console.log(`   • System Config:  ✅ Dynamic configuration management`)
   console.log('\n🌍 Allowed Origins:')
   allowedOrigins.forEach(origin => console.log(`   • ${origin}`))
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')

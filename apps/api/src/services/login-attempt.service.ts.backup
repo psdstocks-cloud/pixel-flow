@@ -136,7 +136,7 @@ export class LoginAttemptService {
 
       // TODO: Send email notification (Step 6)
     } catch (error) {
-      logger.error('Failed to lock account', { error: error instanceof Error ? error.message : String(error), email: normalizedEmail })
+      logger.error('Failed to lock account', { error, email: normalizedEmail })
     }
   }
 
@@ -160,7 +160,7 @@ export class LoginAttemptService {
 
       logger.info('Account unlocked', { email: normalizedEmail, unlockedBy })
     } catch (error) {
-      logger.error('Failed to unlock account', { error: error instanceof Error ? error.message : String(error), email: normalizedEmail })
+      logger.error('Failed to unlock account', { error, email: normalizedEmail })
     }
   }
 
@@ -179,7 +179,7 @@ export class LoginAttemptService {
 
       logger.info('Cleaned up old login attempts', { deleted: result.count })
     } catch (error) {
-      logger.error('Failed to cleanup login attempts', { error: error instanceof Error ? error.message : String(error) })
+      logger.error('Failed to cleanup login attempts', { error })
     }
   }
 }

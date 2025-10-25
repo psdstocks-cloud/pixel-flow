@@ -55,7 +55,7 @@ export async function validateCaptcha(
     if (error instanceof BadRequestError) {
       throw error
     }
-    logger.error('CAPTCHA verification error', { error })
+    logger.error('CAPTCHA verification error', { error: error instanceof Error ? error.message : String(error) })
     throw new BadRequestError('CAPTCHA verification failed', 'CAPTCHA_ERROR')
   }
 }
